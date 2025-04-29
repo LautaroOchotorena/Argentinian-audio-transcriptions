@@ -37,7 +37,12 @@ def extract_spectrogram(file_path=None, audio=None, sr=sr,
         # We only need the magnitude, which can be derived by applying tf.abs
         spectrogram = tf.abs(spectrogram)
         spectrogram = tf.math.pow(spectrogram, 0.5)
-        # Normalization
+        
+        # Normalization. I don't apply it because after this
+        # I need to do padding to zeros (representing silence)
+        # and if I do a normalization first and then the padding the zeros would lose
+        # the meaning of silence.
+
         # means = tf.math.reduce_mean(spectrogram, 1, keepdims=True)
         # stddevs = tf.math.reduce_std(spectrogram, 1, keepdims=True)
         # spectrogram = (spectrogram - means) / (stddevs + 1e-10)
