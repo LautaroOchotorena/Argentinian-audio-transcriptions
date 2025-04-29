@@ -2,50 +2,75 @@ from load_data import *
 import os
 import librosa
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from config import win_length, n_fft, hop_length, n_mels, mfcc, stft, max_time_len
+from config import frame_length, frame_step, fft_length, mfcc, stft, max_time_len, sr
+import tensorflow as tf
 
-def extract_melspectrogram(file_path, win_length=win_length, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, mfcc=mfcc, stft=stft):
-    y, sr = librosa.load(file_path, sr=None)
+def extract_spectrogram(file_path=None, audio=None, sr=sr,
+                        win_length=frame_length, n_fft=fft_length,
+                        hop_length=frame_step, n_mels=fft_length//2+1,
+                        mfcc=mfcc, stft=stft):
+    '''
+    Extract the spectrogram from an audio
+    '''
+    if file_path:
+        if stft:
+            # Read wav file
+            file = tf.io.read_file(file_path)
+            # Decode the wav file
+            audio, sr = tf.audio.decode_wav(file)
+            audio = tf.squeeze(audio, axis=-1)
+            audio = tf.cast(audio, tf.float32)
+        else:
+            # Read wav file
+            audio, sr = librosa.load(file_path, sr=None)
+
     if mfcc:
-        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_fft=n_fft, win_length=win_length, hop_length=hop_length, n_mels=n_mels)
+        # Transform to mfcc
+        mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_fft=n_fft, win_length=win_length, hop_length=hop_length, n_mels=n_mels)
         return mfcc
+    
     elif stft:
-        spectrogram = librosa.stft(y=y, n_fft=n_fft, hop_length=hop_length, win_length=win_length, center=True)
-        spectrogram = np.abs(spectrogram)
-
-        spectrogram = np.sqrt(spectrogram)
-
-        # Normalitzation
-        means = np.mean(spectrogram, axis=0, keepdims=True)
-        stddevs = np.std(spectrogram, axis=0, keepdims=True)
-        spectrogram = (spectrogram - means) / (stddevs + 1e-10)
+        # Get the spectrogram
+        spectrogram = tf.signal.stft(
+            audio, frame_length=frame_length, frame_step=frame_step, fft_length=fft_length
+        )
+        # We only need the magnitude, which can be derived by applying tf.abs
+        spectrogram = tf.abs(spectrogram)
+        spectrogram = tf.math.pow(spectrogram, 0.5)
+        # Normalization
+        # means = tf.math.reduce_mean(spectrogram, 1, keepdims=True)
+        # stddevs = tf.math.reduce_std(spectrogram, 1, keepdims=True)
+        # spectrogram = (spectrogram - means) / (stddevs + 1e-10)
         return spectrogram
 
     else:
-        S = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, win_length=win_length)
+         # Transform to mel spectrogram
+        S = librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, win_length=win_length)
         S_dB = librosa.power_to_db(S, ref=np.max)
         return S_dB
 
-def pad_melspectrogram(mel_spectrogram, max_len=300, stft=stft):
-    if mel_spectrogram.shape[1] > max_len:
-        return mel_spectrogram[:, :max_len]
+def pad_spectrogram(spectrogram, max_len=300, stft=stft):
+    '''
+    padding or truncation if needed
+    '''
+    if spectrogram.shape[1] > max_len:
+        return spectrogram[:, :max_len]
     else:
-        pad_width = max_len - mel_spectrogram.shape[1]
+        pad_width = max_len - spectrogram.shape[1]
         if stft:
-            return np.pad(mel_spectrogram, ((0, 0), (0, pad_width)), mode='constant', constant_values=0)
+            return np.pad(spectrogram, ((0, 0), (0, pad_width)), mode='constant', constant_values=0)
         else:
-            return np.pad(mel_spectrogram, ((0, 0), (0, pad_width)), mode='constant', constant_values=-80)
+            return np.pad(spectrogram, ((0, 0), (0, pad_width)), mode='constant', constant_values=-80)
 
 if __name__ == "__main__":
-    # folder with audio and outpout folder to save the spectrograms
-    folder_path = r'./data/female_audio'
-    output_path = r'./melspectrogram'
-    os.makedirs(output_path, exist_ok=True)
+    from config import folder_path_audio, spectrogram_path
+    # Outpout folder to save the spectrograms
+    os.makedirs(spectrogram_path, exist_ok=True)
 
+    # For each audio file from the dataset creates the spectrogram and saves it
     for filename in female_df['audio_path']:
-        file_path = os.path.join(folder_path, filename) + '.wav'
-        mel_spectrogram = extract_melspectrogram(file_path, mfcc=mfcc)
-        # mel_spectrogram = pad_melspectrogram(mel_spectrogram, max_len=max_time_len)
-        output_file = os.path.join(output_path, filename)
-        np.save(output_file, mel_spectrogram)
+        file_path = os.path.join(folder_path_audio, filename) + '.wav'
+        spectrogram = extract_spectrogram(file_path=file_path, mfcc=mfcc, stft=stft)
+        # spectrogram = pad_spectrogram(spectrogram, max_len=max_time_len)
+        output_file = os.path.join(spectrogram_path, filename)
+        np.save(output_file, spectrogram)
