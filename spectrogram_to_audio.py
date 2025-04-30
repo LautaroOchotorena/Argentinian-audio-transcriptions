@@ -39,6 +39,6 @@ audio_reconstructed = librosa.griffinlim(
 )
 
 # Save the file
-sf.write('audio_test.wav', audio_reconstructed, sr)
+sf.write('spectrogram_to_audio_test.wav', audio_reconstructed, sr)
 
 print('Audio saved')
