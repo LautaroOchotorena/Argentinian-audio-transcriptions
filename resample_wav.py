@@ -1,7 +1,6 @@
 import librosa
 import soundfile as sf
 import os
-from load_data import *
 from config import sr, original_folder_path_audio, folder_path_audio
 
 def resample_wav(input_path, output_path, target_sr=sr):
@@ -20,9 +19,11 @@ def resample_wav(input_path, output_path, target_sr=sr):
 
     except Exception as e:
         print(f"An error occurred: {e}")
-    
-os.makedirs(folder_path_audio, exist_ok=True)
 
-for filename in female_df['audio_path']:
-    file_path = os.path.join(original_folder_path_audio, filename) + '.wav'
-    resample_wav(file_path, os.path.join(folder_path_audio, filename) + '.wav')
+if __name__ == '__main__':
+    from load_data import *
+    os.makedirs(folder_path_audio, exist_ok=True)
+
+    for filename in female_df['audio_path']:
+        file_path = os.path.join(original_folder_path_audio, filename) + '.wav'
+        resample_wav(file_path, os.path.join(folder_path_audio, filename) + '.wav')
