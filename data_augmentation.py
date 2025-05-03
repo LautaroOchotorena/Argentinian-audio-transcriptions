@@ -29,10 +29,17 @@ if __name__ == '__main__':
     temporal_df = df.copy(deep=True)
 
     for row in df[['first_path', 'audio_path', 'transcription']].itertuples(index=False):
-        for i in range(1, times_augmentations + 1):
-            first_path = row.first_path
-            filename = row.audio_path
-            transcription = row.transcription
+        first_path = row.first_path
+        filename = row.audio_path
+        transcription = row.transcription
+        # If it is a male audio then do augmentatios: 2*times_augmentations+1
+        # This will keep the balance in the dataset between female and male audio
+        # This is because my dataset has twice as many female audio files
+        # as male audio files
+        times_augmentations_original = times_augmentations
+        if first_path == 'male_audio':
+            times_augmentations_original += times_augmentations_original + 1
+        for i in range(1, times_augmentations_original + 1):
             (masking_bool, pitch_change_bool,
             time_stretch_bool, amplitude_change_bool, add_noise_bool) = generate_tuple()
             
