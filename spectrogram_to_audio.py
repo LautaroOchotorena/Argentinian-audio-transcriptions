@@ -5,6 +5,7 @@ import soundfile as sf
 from config import frame_length, frame_step, fft_length, folder_path_audio
 import tensorflow as tf
 import random
+import pandas as pd
 
 df = pd.read_csv('./data/df.csv')
 # Choose a randome audio
