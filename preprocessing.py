@@ -46,10 +46,9 @@ df_val = df[:split]
 # Delete the files that are augmentation of an audio from the valid set
 val_roots = df_val["audio_path"].tolist()
 def is_not_val_aug(path):
-    return not any(path.startswith(root) for root in val_roots)
+    return not any(path.startswith('augmentation/' + root) for root in val_roots)
 
 df_train = df_train[df_train["audio_path"].apply(is_not_val_aug)]
-
 # The set of characters accepted in the transcription
 characters = [x for x in "abcdefghijklmnopqrstuvwxyz?! ¿áéíúóñ¡"]
 # Mapping characters to integers
