@@ -86,15 +86,24 @@ class CallbackEval(keras.callbacks.Callback):
     def __init__(self, dataset, valid_set=True, max_batches=50):
         super().__init__()
         self.valid_set = valid_set
-        if not valid_set:
-            dataset = dataset.shuffle(buffer_size=10000, reshuffle_each_iteration=True)
-            dataset = dataset.take(max_batches)
         self.dataset = dataset
+        self.max_batches = max_batches
 
     def on_epoch_end(self, epoch: int, logs=None):
+        if not self.valid_set:
+            # Each time it calls take it shuffles
+            dataset = self.dataset.take(self.max_batches)
+            # First saves the loss and val_loss
+            logs = logs or {}
+            if 'loss' in logs:
+                mlflow.log_metric("loss", logs['loss'], step=epoch)
+            if 'val_loss' in logs:
+                mlflow.log_metric("val_loss", logs['val_loss'], step=epoch)
+        else:
+            dataset = self.dataset
         predictions = []
         targets = []
-        for batch in self.dataset:
+        for batch in dataset:
             X, y = batch
             batch_predictions = model.predict(X, verbose=0)
             batch_predictions = decode_batch_predictions(batch_predictions)
