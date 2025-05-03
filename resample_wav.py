@@ -21,9 +21,12 @@ def resample_wav(input_path, output_path, target_sr=sr):
         print(f"An error occurred: {e}")
 
 if __name__ == '__main__':
-    from load_data import *
+    import pandas as pd
+    df = pd.read_csv('data/df.csv')
     os.makedirs(folder_path_audio, exist_ok=True)
 
-    for filename in female_df['audio_path']:
-        file_path = os.path.join(original_folder_path_audio, filename) + '.wav'
+    for row in df[['first_path', 'audio_path']].itertuples(index=False):
+        first_path = row.first_path
+        filename = row.audio_path
+        file_path = os.path.join(original_folder_path_audio, first_path, filename) + '.wav'
         resample_wav(file_path, os.path.join(folder_path_audio, filename) + '.wav')

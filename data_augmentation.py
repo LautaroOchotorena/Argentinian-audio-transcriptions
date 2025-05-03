@@ -15,8 +15,7 @@ import librosa
 import numpy as np
 import tensorflow as tf
 
-female_df = pd.read_csv('./data/female_df')
-male_df = pd.read_csv('./data/male_df')
+df = pd.read_csv('data/df.csv')
 
 def generate_tuple():
     amount_true = random.randint(2, 3)  # Selects 2 or 3 augmentations
@@ -27,10 +26,11 @@ def generate_tuple():
 if __name__ == '__main__':
     output_path = spectrogram_path + 'augmentation'
     os.makedirs(output_path, exist_ok=True)
-    temporal_df = female_df.copy(deep=True)
+    temporal_df = df.copy(deep=True)
 
-    for row in female_df[['audio_path', 'transcription']].itertuples(index=False):
+    for row in df[['first_path', 'audio_path', 'transcription']].itertuples(index=False):
         for i in range(1, times_augmentations + 1):
+            first_path = row.first_path
             filename = row.audio_path
             transcription = row.transcription
             (masking_bool, pitch_change_bool,
@@ -89,10 +89,11 @@ if __name__ == '__main__':
             np.save(output_file, spectrogram)
 
             # Add the file to the dataset
-            temporal_df.loc[len(temporal_df)] = {'audio_path': 'augmentation/' + filename + f'_augmentation_{i}',
-                                            'transcription': transcription,
-                                            'sr': sr,
-                                            'duration': duration}
+            temporal_df.loc[len(temporal_df)] = {'first_path': first_path,
+                                                 'audio_path': 'augmentation/' + filename + f'_augmentation_{i}',
+                                                 'transcription': transcription,
+                                                 'sr': sr,
+                                                 'duration': duration}
             
             # Saves the dataset
-            temporal_df.to_csv('./data/female_df_with_augmentations', index=False)
+            temporal_df.to_csv('./data/df_with_augmentations.csv', index=False)

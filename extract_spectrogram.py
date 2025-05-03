@@ -69,11 +69,15 @@ def pad_spectrogram(spectrogram, max_len=300, stft=stft):
 
 if __name__ == "__main__":
     from config import folder_path_audio, spectrogram_path
+
+    df = pd.read_csv('data/df.csv')
     # Outpout folder to save the spectrograms
     os.makedirs(spectrogram_path, exist_ok=True)
 
     # For each audio file from the dataset creates the spectrogram and saves it
-    for filename in female_df['audio_path']:
+    for row in df[['first_path', 'audio_path']].itertuples(index=False):
+        first_path = row.first_path
+        filename = row.audio_path
         file_path = os.path.join(folder_path_audio, filename) + '.wav'
         spectrogram = extract_spectrogram(file_path=file_path, mfcc=mfcc, stft=stft)
         # spectrogram = pad_spectrogram(spectrogram, max_len=max_time_len)

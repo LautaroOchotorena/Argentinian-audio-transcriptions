@@ -8,9 +8,8 @@ import unicodedata
 from config import fft_length, batch_size, spectrogram_path
 
 # Load datasets
-female_df_with_augmentations = pd.read_csv('./data/female_df_with_augmentations')
-female_df = pd.read_csv('./data/female_df')
-male_df = pd.read_csv('./data/male_df')
+df_with_augmentations = pd.read_csv('./data/df_with_augmentations.csv')
+df = pd.read_csv('./data/df.csv')
 
 # Remove accents. Converts ñ to n
 def remove_accents(texto):
@@ -23,26 +22,26 @@ def remove_accents(texto):
     return texto
 
 # In case of applying the remove accents
-#female_df_with_augmentations['transcription'] = female_df_with_augmentations['transcription'].apply(remove_accents)
-#female_df['transcription'] = female_df['transcription'].apply(remove_accents)
+#df_with_augmentations['transcription'] = df_with_augmentations['transcription'].apply(remove_accents)
+#df['transcription'] = df['transcription'].apply(remove_accents)
 
 # Shuffle the datasets
-num_samples = len(female_df)
+num_samples = len(df)
 np.random.seed(42)
 permutation = np.random.permutation(num_samples)
 
 # Applies the same shuffle for both datasets only in the no augmentations examples
-female_df = female_df.iloc[permutation].reset_index(drop=True)
-female_df_with_augmentations.iloc[:num_samples] = (
-    female_df_with_augmentations.iloc[permutation].reset_index(drop=True)
+df = df.iloc[permutation].reset_index(drop=True)
+df_with_augmentations.iloc[:num_samples] = (
+    df_with_augmentations.iloc[permutation].reset_index(drop=True)
 )
 
 # Split to df_train and df_val. Only augmentation in the training set.
-split = int(len(female_df) * 0.10)
+split = int(len(df) * 0.10)
 
 # Adding more augmentations it won't have a problem
-df_train = female_df_with_augmentations[split:]
-df_val = female_df[:split]
+df_train = df_with_augmentations[split:]
+df_val = df[:split]
 
 # Delete the files that are augmentation of an audio from the valid set
 val_roots = df_val["audio_path"].tolist()
@@ -66,7 +65,8 @@ def load_npy_sample(npy_file, label):
     
     # Outputs a tensor to be compatible with tf.data.Dataset
     spectrogram = tf.numpy_function(np.load, [npy_path], tf.float32)
-
+    spectrogram.set_shape([None, fft_length // 2 + 1])
+    
     # Process the label
     label = tf.strings.lower(label)
     label = tf.strings.unicode_split(label, input_encoding="UTF-8")

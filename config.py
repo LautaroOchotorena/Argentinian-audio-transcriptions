@@ -1,9 +1,12 @@
-folder_path_audio = './audio_16k'
+original_folder_path_audio = './data'
+# I transform the 48khz wav files to 16khz
+folder_path_audio = './data/audio_16k'
+
 ######## Spectrogram ########
-sr = 22050
-frame_length = 256
-frame_step = 160
-fft_length = 384
+sr = 16000
+frame_length = int((11.6/1000) * sr)   # 11.6 ms per sample
+frame_step = int((7.25/1000) * sr)     # 7.25 ms per sample
+fft_length = int((1/57.4) * sr)        # 57.4 Hz per bin
 mfcc=False
 stft=True
 max_time_len = 1 + (7*sr-frame_length)//frame_step # n_seconds_audio = 7,
@@ -34,10 +37,19 @@ rate_upper_bound = 1.2
 semitones_lower_bound = -1
 semitones_upper_bound = 2
 
+# Add noise
+noise_level_lower_bound = 0.01
+noise_level_upper_bound = 0.03
+
 ######## Model ####### 
-initial_epoch = 0 # checkpoints/epoch_{initial_epoch}.h5
+run_id = '7b621a9ddbb8475aace349f991082ad5'
+default_initial_epoch = 34 # loads weights from checkpoints/epoch_{initial_epoch}.h5 
+                           # when initial_epoch > 0
 batch_size = 7
-rnn_layers=5
-learning_rate=1e-4
-dropout = 0.5
-rnn_units=512
+rnn_layers=4
+default_learning_rate=0.000196  
+dropout = 0.3
+rnn_units=448
+
+######## Demo ####### 
+rescoring_path = "~/arg_audio_transcriptions/rescoring"

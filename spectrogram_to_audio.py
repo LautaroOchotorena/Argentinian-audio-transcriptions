@@ -3,13 +3,13 @@ import os
 import random
 import soundfile as sf
 from config import frame_length, frame_step, fft_length, folder_path_audio
-from load_data import female_df
 import tensorflow as tf
 import random
 
+df = pd.read_csv('./data/df.csv')
 # Choose a randome audio
-rand_index = random.randint(0, len(female_df) - 1)
-filename = female_df['audio_path'][rand_index]
+rand_index = random.randint(0, len(df) - 1)
+filename = df['audio_path'][rand_index]
 
 file_path = os.path.join(folder_path_audio, filename) + '.wav'
 
