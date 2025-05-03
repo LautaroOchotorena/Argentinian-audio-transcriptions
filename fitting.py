@@ -206,10 +206,7 @@ checkpoint_callback = ModelCheckpoint(
 )
 
 # If a intial_epoch was passed then it restores the weights from that epoch
-if initial_epoch > 0 and initial_epoch < 10:
-    model.load_weights(f'checkpoints/epoch_0{initial_epoch}.weights.h5')
-elif initial_epoch > 10:
-    model.load_weights(f'checkpoints/epoch_{initial_epoch}.weights.h5')
+model.load_weights(f'checkpoints/epoch_{initial_epoch:02d}.weights.h5')
 
 # Reduce the learning rate if val_loss doesn't get better after a few epochs
 lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
