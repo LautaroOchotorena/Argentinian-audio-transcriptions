@@ -39,14 +39,15 @@ def load_model():
     )
 
     # Load the weights from the last checkpoint
-    weights_folder = 'checkpoints'
-    files = os.listdir(weights_folder)
-    epoch_files = [f for f in files if re.match(r'epoch_\d+\.weights\.h5', f)]
-    epochs = [int(re.search(r'epoch_(\d+)', f).group(1)) for f in epoch_files]
+    checkpoint_dir = 'checkpoints'
+    files = os.listdir(checkpoint_dir)
+    epoch_files = [f for f in files if re.fullmatch(r'ckpt-(\d+)\.data-00000-of-00001', f)]
+    epochs = [int(re.search(r'ckpt-(\d+)', f).group(1)) for f in epoch_files]
     latest_epoch = max(epochs)
-    latest_weights_file = f"epoch_{latest_epoch:02d}.weights.h5"
 
-    model.load_weights(os.path.join(weights_folder, latest_weights_file))
+    checkpoint = tf.train.Checkpoint(model=model, optimizer=model.optimizer)
+    checkpoint.restore(f"{checkpoint_dir}/ckpt-{latest_epoch}")
+
     return model
 
 if __name__ == '__main__':
