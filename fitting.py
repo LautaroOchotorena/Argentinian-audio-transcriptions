@@ -1,10 +1,11 @@
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
-from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.callbacks import EarlyStopping
 import numpy as np
 import mlflow
 import keras
+import tensorflow.keras.backend as K
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -96,9 +97,9 @@ class CallbackEval(keras.callbacks.Callback):
             # First saves the loss and val_loss
             logs = logs or {}
             if 'loss' in logs:
-                mlflow.log_metric("loss", logs['loss'], step=epoch)
+                mlflow.log_metric("loss", logs['loss'], step=epoch+1)
             if 'val_loss' in logs:
-                mlflow.log_metric("val_loss", logs['val_loss'], step=epoch)
+                mlflow.log_metric("val_loss", logs['val_loss'], step=epoch+1)
         else:
             dataset = self.dataset
         predictions = []
@@ -123,8 +124,8 @@ class CallbackEval(keras.callbacks.Callback):
         print(f"{'-' * (len(tag) + 82)}")
 
         if self.valid_set:
-            mlflow.log_metric("val_wer_score", wer_score, step=epoch)
-            mlflow.log_metric("val_cer_score", cer_score, step=epoch)
+            mlflow.log_metric("val_wer_score", wer_score, step=epoch+1)
+            mlflow.log_metric("val_cer_score", cer_score, step=epoch+1)
             for i in np.random.randint(0, len(predictions), 2):
                 print(f"Target    : {targets[i]}")
                 print(f"Prediction: {predictions[i]}")
@@ -132,14 +133,11 @@ class CallbackEval(keras.callbacks.Callback):
             
             # Store the learning rate as a metric
             lr = self.model.optimizer.learning_rate
-            if callable(lr):
-                lr = lr(self.model.optimizer.iterations).numpy()
-            else:
-                lr = lr.numpy()
-            mlflow.log_metric("learning_rate", lr, step=epoch)
+            lr = float(K.get_value(lr))
+            mlflow.log_metric("learning_rate", lr, step=epoch+1)
         else:
-            mlflow.log_metric("wer_score", wer_score, step=epoch)
-            mlflow.log_metric("cer_score", cer_score, step=epoch)
+            mlflow.log_metric("wer_score", wer_score, step=epoch+1)
+            mlflow.log_metric("cer_score", cer_score, step=epoch+1)
 
 # Callback function to check transcriptions and metrics on the val set.
 validation_callback = CallbackEval(validation_dataset, valid_set=True)
@@ -170,8 +168,10 @@ class MetricsPlotCallback(keras.callbacks.Callback):
 
         # === Loss plot ===
         plt.figure(figsize=(8, 5))
-        plt.plot(loss_vals, label="loss", color="blue")
-        plt.plot(val_loss_vals, label="val_loss", color="orange")
+        plt.plot(range(1, len(loss_vals) + 1), loss_vals,
+                 label="loss", color="blue")
+        plt.plot(range(1, len(val_loss_vals) + 1), val_loss_vals,
+                 label="val_loss", color="orange")
         plt.title("Loss vs Val_Loss")
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
@@ -183,8 +183,10 @@ class MetricsPlotCallback(keras.callbacks.Callback):
 
         # === WER plot ===
         plt.figure(figsize=(8, 5))
-        plt.plot(wer_vals, label="wer", color="green")
-        plt.plot(val_wer_vals, label="val_wer", color="red")
+        plt.plot(range(1, len(wer_vals) + 1), wer_vals,
+                 label="wer", color="green")
+        plt.plot(range(1, len(val_wer_vals) + 1), val_wer_vals,
+                 label="val_wer", color="red")
         plt.title("WER vs Val_WER")
         plt.xlabel("Epoch")
         plt.ylabel("Word Error Rate")
@@ -194,28 +196,131 @@ class MetricsPlotCallback(keras.callbacks.Callback):
         plt.savefig(os.path.join(self.save_dir, f"wer_plot.png"))
         plt.close()
 
-# Define the number of epochs.
+checkpoint = tf.train.Checkpoint(model=model, optimizer=model.optimizer)
+
+# Saves and only keeps the max_to_keep files
+class save_weights_and_optimizer_state(tf.keras.callbacks.Callback):
+    def __init__(self, checkpoint_dir, max_to_keep=15):
+        super().__init__()
+        self.manager = tf.train.CheckpointManager(
+            checkpoint, 
+            directory=checkpoint_dir,
+            max_to_keep=max_to_keep
+        )
+
+    def on_epoch_end(self, epoch, logs=None):
+        # Save the weights and the optimizer state
+        save_path = self.manager.save()
+        print(f'\nModel weights and optimizer state saved at: {save_path}')
+
+checkpoint_dir = 'checkpoints'
+# If a intial_epoch was passed then it restores the weights
+# and the optimizer state from that epoch
+if initial_epoch > 0 and run_id:
+    checkpoint.restore(checkpoint_dir + f'/ckpt-{initial_epoch}')
+    print(f"Checkpoint cargado")
+
+class MLFlowEarlyStopping_and_reduce_lr(EarlyStopping):
+    def __init__(self, run_id=None, monitor='val_loss',
+                 early_stop_patience=6, min_delta=0.0,
+                 min_lr=1e-6,
+                 reduce_lr_factor=0.5,
+                 reduce_lr_patience=3,
+                 verbose=1, **kwargs):
+        super().__init__(patience=early_stop_patience, min_delta=min_delta,
+                         verbose=verbose, **kwargs)
+        self.run_id = run_id
+        self.best_value = np.inf
+
+        self.monitor = monitor
+        # Early stopping
+        self.wait_early_stop = 0
+        self.early_stop_patience = early_stop_patience
+
+        # Reduce lr
+        self.wait_reduce_lr = 0
+        self.reduce_lr_patience = reduce_lr_patience
+        self.reduce_lr_factor = reduce_lr_factor
+        self.min_lr = min_lr
+
+        if run_id:
+            self._load_best()
+
+    def _load_best(self):
+        try:
+            client = MlflowClient()
+            metrics = client.get_metric_history(self.run_id, self.monitor)
+
+            if not metrics:
+                return
+
+            # Sort by step in case they are not sorted
+            metrics.sort(key=lambda m: m.step)
+
+            # Find the minimum value of the monitor and its epoch
+            losses = [(m.step, m.value) for m in metrics]
+            self.best_epoch, self.best_value = min(losses, key=lambda x: x[1])
+            last_epoch = metrics[-1].step
+
+            # how many epochs without improvement from the last learning rate change
+            if last_epoch - self.best_epoch >= self.reduce_lr_patience:
+                self.wait_reduce_lr = (last_epoch - self.best_epoch) % self.reduce_lr_patience
+            else:
+                self.wait_reduce_lr = last_epoch - self.best_epoch
+            # how many epochs without improvement
+            self.wait_early_stop = last_epoch - self.best_epoch
+
+            print(f"[MLFlowEarlyStopping] Best val_loss: {self.best_value:.4f} at epoch {self.best_epoch}")
+            print(f"[MLFlowEarlyStopping] Patience for LR reduction: {self.wait_reduce_lr}")
+            print(f"[MLFlowEarlyStopping] Patience for early stopping: {self.wait_early_stop}")
+
+        except Exception as e:
+            print(f"[MLFlowEarlyStopping] Failed to load {self.monitor} history from MLflow: {e}")
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        monitor_value = logs.get(self.monitor)
+        if monitor_value is None:
+            return
+
+        # Minimize the metric
+        if monitor_value + self.min_delta < self.best_value:
+            self.best_value = monitor_value
+            self.best_epoch = epoch
+            self.wait_early_stop = 0
+            self.wait_reduce_lr = 0
+        else:
+            self.wait_early_stop += 1
+            self.wait_reduce_lr += 1
+
+        if self.wait_early_stop >= self.early_stop_patience:
+            # Applies the early stop
+            self.model.stop_training = True
+            if self.verbose > 0:
+                print(f"Epoch {epoch + 1}: early stopping (wait={self.wait_early_stop})")
+                print(f'Best val_loss: {self.best_value:.4f} at epoch {self.best_epoch + 1}')
+
+        if self.wait_reduce_lr >= self.reduce_lr_patience:
+            # Obtains the current lr
+            lr = self.model.optimizer.learning_rate
+
+            old_lr = float(K.get_value(lr))
+            # Applies the reduce lr
+            new_lr = max(old_lr * self.reduce_lr_factor, self.min_lr)
+            lr.assign(new_lr)
+            self.wait_reduce_lr = 0
+            if self.verbose > 0:
+                print(f"Epoch {epoch + 1}: learning rate reduce to = {new_lr}")
+
+EarlyStopping_and_reduce_lr = MLFlowEarlyStopping_and_reduce_lr(run_id, monitor='val_loss',
+                                                                early_stop_patience=6,
+                                                                min_delta=0.0,
+                                                                reduce_lr_factor=0.5,
+                                                                reduce_lr_patience=3,
+                                                                verbose=1)
+
+# Define number of epochs to fit
 epochs = 100
-
-# Callback to save the weights after each epoch
-checkpoint_callback = ModelCheckpoint(
-    filepath='checkpoints/epoch_{epoch:02d}.weights.h5',
-    save_weights_only=True,
-    save_freq='epoch',
-    verbose=1
-)
-
-# If a intial_epoch was passed then it restores the weights from that epoch
-if initial_epoch >0:
-    model.load_weights(f'checkpoints/epoch_{initial_epoch:02d}.weights.h5')
-
-# Reduce the learning rate if val_loss doesn't get better after a few epochs
-lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
-    monitor='val_loss',
-    factor=0.5,
-    patience=3,
-    min_lr=1e-6,
-    verbose=1)
 
 with run:
     # If new run then stores the initial params
@@ -232,7 +337,16 @@ with run:
         train_dataset,
         validation_data=validation_dataset,
         epochs=epochs,
-        callbacks=[train_callback, validation_callback, checkpoint_callback,
-                   lr_callback, MetricsPlotCallback(run_id=run_id)],
+        # train_callback has to be after EarlyStopping_and_reduce_lr
+        # (EarlyStopping_and_reduce_lr has to use loss only from previous epochs and
+        # train_callback stores de loss from the current epoch)
+        # validation_callback has to be before EarlyStopping_and_reduce_lr
+        # (validation_callback stores de lr from the current epoch and then 
+        # EarlyStopping_and_reduce_lr reduce the lr if needed)
+        callbacks=[save_weights_and_optimizer_state(checkpoint_dir),
+                   validation_callback,
+                   EarlyStopping_and_reduce_lr,
+                   train_callback,
+                   MetricsPlotCallback(run_id=run_id)],
         initial_epoch=initial_epoch
     )
