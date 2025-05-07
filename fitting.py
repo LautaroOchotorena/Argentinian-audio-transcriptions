@@ -8,6 +8,7 @@ import keras
 import tensorflow.keras.backend as K
 import matplotlib
 matplotlib.use("Agg")
+from matplotlib.ticker import MaxNLocator
 import matplotlib.pyplot as plt
 from jiwer import wer, cer
 from preprocessing import *
@@ -167,34 +168,35 @@ class MetricsPlotCallback(keras.callbacks.Callback):
         val_wer_vals = [m.value for m in sorted(val_wer, key=lambda x: x.step)]
 
         # === Loss plot ===
+        fig, ax = plt.subplots(figsize=(8, 5))
         plt.figure(figsize=(8, 5))
-        plt.plot(range(1, len(loss_vals) + 1), loss_vals,
+        ax.plot(range(1, len(loss_vals) + 1), loss_vals,
                  label="loss", color="blue")
-        plt.plot(range(1, len(val_loss_vals) + 1), val_loss_vals,
+        ax.plot(range(1, len(val_loss_vals) + 1), val_loss_vals,
                  label="val_loss", color="orange")
-        plt.title("Loss vs Val_Loss")
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.save_dir, f"loss_plot.png"))
-        plt.close()
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax.set_title("Loss vs Val_Loss")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.legend()
+        ax.grid(True)
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.save_dir, f"loss_plot.png"))
+        plt.close(fig)
 
         # === WER plot ===
-        plt.figure(figsize=(8, 5))
-        plt.plot(range(1, len(wer_vals) + 1), wer_vals,
-                 label="wer", color="green")
-        plt.plot(range(1, len(val_wer_vals) + 1), val_wer_vals,
-                 label="val_wer", color="red")
-        plt.title("WER vs Val_WER")
-        plt.xlabel("Epoch")
-        plt.ylabel("Word Error Rate")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.save_dir, f"wer_plot.png"))
-        plt.close()
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.plot(range(1, len(wer_vals) + 1), wer_vals, label="wer", color="green")
+        ax.plot(range(1, len(val_wer_vals) + 1), val_wer_vals, label="val_wer", color="red")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # Fuerza ticks enteros
+        ax.set_title("WER vs Val_WER")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Word Error Rate")
+        ax.legend()
+        ax.grid(True)
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.save_dir, f"wer_plot.png"))
+        plt.close(fig)
 
 checkpoint = tf.train.Checkpoint(model=model, optimizer=model.optimizer)
 
