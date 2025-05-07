@@ -2,7 +2,7 @@ import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 import keras
-from tensorflow.keras import layers
+from tensorflow.keras import layers, regularizers
 from config import dropout
 
 def CTCLoss(y_true, y_pred):
@@ -19,7 +19,8 @@ def CTCLoss(y_true, y_pred):
     loss = tf.keras.backend.ctc_batch_cost(y_true, y_pred, input_length, label_length)
     return loss
 
-def build_model(input_dim, output_dim, rnn_layers=5, rnn_units=128, learning_rate=1e-4):
+def build_model(input_dim, output_dim, rnn_layers=5,
+                rnn_units=128, learning_rate=1e-4, l2_reg=1e-2):
     # Model's input
     input_spectrogram = layers.Input((None, input_dim), name="input")
     # Expand the dimension to use 2D CNN.
@@ -32,6 +33,7 @@ def build_model(input_dim, output_dim, rnn_layers=5, rnn_units=128, learning_rat
         strides=[2, 2],
         padding="same",
         use_bias=False,
+        kernel_regularizer=regularizers.l2(l2_reg),
         name="conv_1",
     )(x)
     x = layers.BatchNormalization(name="conv_1_bn")(x)
@@ -43,12 +45,14 @@ def build_model(input_dim, output_dim, rnn_layers=5, rnn_units=128, learning_rat
         strides=[1, 2],
         padding="same",
         use_bias=False,
+        kernel_regularizer=regularizers.l2(l2_reg),
         name="conv_2",
     )(x)
     x = layers.BatchNormalization(name="conv_2_bn")(x)
     x = layers.ReLU(name="conv_2_relu")(x)
     # Reshape the resulted volume to feed the RNNs layers
     x = layers.Reshape((-1, x.shape[-2] * x.shape[-1]))(x)
+    x = layers.Dropout(0.3, name="conv_dropout")(x)
     # RNN layers
     for i in range(1, rnn_layers + 1):
         recurrent = layers.GRU(
@@ -63,10 +67,11 @@ def build_model(input_dim, output_dim, rnn_layers=5, rnn_units=128, learning_rat
         x = layers.Bidirectional(
             recurrent, name=f"bidirectional_{i}", merge_mode="concat"
         )(x)
-        if i < rnn_layers:
-            x = layers.Dropout(rate=dropout)(x)
+        x = layers.Dropout(rate=dropout)(x)
     # Dense layer
-    x = layers.Dense(units=rnn_units * 2, name="dense_1")(x)
+    x = layers.Dense(units=rnn_units * 2,
+                     kernel_regularizer=regularizers.l2(l2_reg),
+                     name="dense_1")(x)
     x = layers.ReLU(name="dense_1_relu")(x)
     x = layers.Dropout(rate=dropout)(x)
     # Classification layer
