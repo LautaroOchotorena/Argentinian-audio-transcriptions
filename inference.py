@@ -12,22 +12,29 @@ from config import rnn_units, rnn_layers, batch_size, default_learning_rate
 def decode_batch_predictions(pred, greedy=True, beam_width=100, top_paths=1):
     input_len = np.ones(pred.shape[0]) * pred.shape[1]
     # Greedy search or beam search apply
-    if greedy==False and top_paths>1:
-        results = tf.keras.backend.ctc_decode(pred, input_length=input_len, greedy=greedy, beam_width=beam_width, top_paths=top_paths)[0]
+    results = tf.keras.backend.ctc_decode(pred, input_length=input_len, greedy=greedy, beam_width=beam_width, top_paths=top_paths)[0]
+
+    if top_paths > 1:
+        # Only stores the results that are different
+        output_text = []
+        for paths in zip(*results):
+            seen = set()
+            unique_texts = []
+            for path in paths:
+                text = tf.strings.reduce_join(num_to_char(path)).numpy().decode("utf-8")
+                if text not in seen:
+                    seen.add(text)
+                    unique_texts.append(text)
+            output_text.append(unique_texts)
+        return output_text
     else:
-        results = tf.keras.backend.ctc_decode(pred, input_length=input_len, greedy=greedy, beam_width=beam_width, top_paths=top_paths)[0][0]
-    # Iterate over the results and get back the text
-    output_text = []
-    for paths in zip(*results):  # Agrupa por muestra
-        seen = set()
-        unique_texts = []
-        for path in paths:
-            text = tf.strings.reduce_join(num_to_char(path)).numpy().decode("utf-8")
-            if text not in seen:
-                seen.add(text)
-                unique_texts.append(text)
-        output_text.append(unique_texts)
-    return output_text
+        # Iterate over the results and get back the text
+        output_text = []
+        for result in results[0]:
+            result = tf.strings.reduce_join(num_to_char(result)).numpy().decode("utf-8")
+            output_text.append(result)
+        return output_text
+
 
 def load_model():
     model = build_model(
@@ -61,7 +68,7 @@ if __name__ == '__main__':
     targets = []
     for batch in validation_dataset:
         X, y = batch
-        batch_predictions = model.predict(X)
+        batch_predictions = model.predict(X, verbose=0)
         batch_predictions = decode_batch_predictions(batch_predictions)
         predictions.extend(batch_predictions)
         for label in y:

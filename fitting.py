@@ -12,6 +12,7 @@ from matplotlib.ticker import MaxNLocator
 import matplotlib.pyplot as plt
 from jiwer import wer, cer
 from preprocessing import *
+from inference import decode_batch_predictions
 from config import (fft_length, rnn_units,
                     rnn_layers, default_initial_epoch, 
                     default_learning_rate, run_id, batch_size)
@@ -68,18 +69,6 @@ model = build_model(
     learning_rate=learning_rate
 )
 model.summary(line_length=110)
-
-# A utility function to decode the output of the network
-def decode_batch_predictions(pred):
-    input_len = np.ones(pred.shape[0]) * pred.shape[1]
-    # Use greedy search. For complex tasks, you can use beam search
-    results = tf.keras.backend.ctc_decode(pred, input_length=input_len, greedy=True)[0][0]
-    # Iterate over the results and get back the text
-    output_text = []
-    for result in results:
-        result = tf.strings.reduce_join(num_to_char(result)).numpy().decode("utf-8")
-        output_text.append(result)
-    return output_text
 
 # A callback class to save
 # metrics and outputs a few transcriptions after each epoch
