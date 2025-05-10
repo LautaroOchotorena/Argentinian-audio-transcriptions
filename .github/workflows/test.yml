@@ -26,11 +26,9 @@ jobs:
         
     - name: Clone the repository checkpoints
       run: |
-        git init temp_repo
+        mkdir temp_repo
         cd temp_repo
-        git remote add origin https://huggingface.co/LautaroOcho/Argentinian-audio-transcriptions
-        git fetch origin
-        git checkout origin/main -- checkpoints
+        git clone https://huggingface.co/LautaroOcho/Argentinian-audio-transcriptions .
         mv checkpoints ../
         cd ..
         rm -rf temp_repo
