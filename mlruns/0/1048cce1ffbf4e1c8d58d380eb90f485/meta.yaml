@@ -1,0 +1,15 @@
+artifact_uri: file:///mnt/e/Lautaro%20Personal/Videos%20Facultad%2C%20Cursos%20y%20Clases%20de%20Canto%20y%20Musica/Proyectos/Argentinian%20audio%20transcriptions/mlruns/0/1048cce1ffbf4e1c8d58d380eb90f485/artifacts
+end_time: 1746584409479
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 1048cce1ffbf4e1c8d58d380eb90f485
+run_name: transcription_model
+run_uuid: 1048cce1ffbf4e1c8d58d380eb90f485
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1746471589897
+status: 3
+tags: []
+user_id: lau
