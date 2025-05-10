@@ -42,14 +42,16 @@ noise_level_lower_bound = 0.01
 noise_level_upper_bound = 0.03
 
 ######## Model ####### 
-run_id = '7b621a9ddbb8475aace349f991082ad5'
-default_initial_epoch = 34 # loads weights from checkpoints/epoch_{initial_epoch}.h5 
+run_id = '1048cce1ffbf4e1c8d58d380eb90f485'
+default_initial_epoch = 18 # loads weights from checkpoints/epoch_{initial_epoch}.h5 
                            # when initial_epoch > 0
 batch_size = 7
-rnn_layers=4
+rnn_layers=5
 default_learning_rate=0.000196  
-dropout = 0.3
+dropout = 0.5
 rnn_units=448
 
 ######## Demo ####### 
+# If using WSL2 on Windows it is better to have the kenlm folder on linux,
+# not on windows
 rescoring_path = "~/arg_audio_transcriptions/rescoring"
