@@ -1,0 +1,41 @@
+name: Compare results in PR
+
+on:
+  pull_request:
+    types: [opened, synchronize]  # Triggered when a PR is opened or updated
+
+jobs:
+  compare-results:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install necessary dependencies
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install matplotlib pillow
+
+    - name: Set environment variables
+      run: |
+        echo "BASE_REF=${{ github.base_ref }}" >> $GITHUB_ENV
+        echo "HEAD_REF=${{ github.head_ref }}" >> $GITHUB_ENV
+
+    - name: Generate comparative chart
+      run: |
+        mkdir -p comparison
+        python .github/scripts/compare_results.py
+
+    - name: Upload comparative chart as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: comparison-metrics
+        path: comparison/
+
+    - name: Comment on the PR with the comparison image
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        message: |
+          ![Comparison Chart](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$(echo comparison/comparison.png | sed 's/\//%2F/g'))
