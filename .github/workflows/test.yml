@@ -36,4 +36,4 @@ jobs:
         rm -rf temp_repo
 
     - name: Run tests
-      run: pytest tests/
+      run: pytest .github/tests
