@@ -26,10 +26,14 @@ jobs:
         
     - name: Clone the repository checkpoints
       run: |
-        git init
+        git init temp_repo
+        cd temp_repo
         git remote add origin https://huggingface.co/LautaroOcho/Argentinian-audio-transcriptions
         git fetch origin
-        git checkout -t origin/main
+        git checkout origin/main -- checkpoints
+        mv checkpoints ../
+        cd ..
+        rm -rf temp_repo
 
     - name: Run tests
       run: pytest tests/
