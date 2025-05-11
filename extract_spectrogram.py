@@ -1,4 +1,3 @@
-from load_data import *
 import os
 import librosa
 import numpy as np
@@ -68,6 +67,7 @@ def pad_spectrogram(spectrogram, max_len=300, stft=stft):
             return np.pad(spectrogram, ((0, 0), (0, pad_width)), mode='constant', constant_values=-80)
 
 if __name__ == "__main__":
+    from load_data import *
     from config import folder_path_audio, spectrogram_path
 
     df = pd.read_csv('data/df.csv')

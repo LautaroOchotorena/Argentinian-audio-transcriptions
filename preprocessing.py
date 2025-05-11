@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import keras
 import unicodedata
-from config import fft_length, batch_size, spectrogram_path
+from config import fft_length, batch_size, spectrogram_path, characters
 
 # Load datasets
 df_with_augmentations = pd.read_csv('./data/df_with_augmentations.csv')
@@ -49,8 +49,7 @@ def is_not_val_aug(path):
     return not any(path.startswith('augmentation/' + root) for root in val_roots)
 
 df_train = df_train[df_train["audio_path"].apply(is_not_val_aug)]
-# The set of characters accepted in the transcription
-characters = [x for x in "abcdefghijklmnopqrstuvwxyz?! ¿áéíúóñ¡"]
+
 # Mapping characters to integers
 char_to_num = keras.layers.StringLookup(vocabulary=characters, oov_token="")
 # Mapping integers back to original characters

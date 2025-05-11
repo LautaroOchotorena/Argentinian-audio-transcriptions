@@ -1,0 +1,30 @@
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12.6'
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install huggingface-hub==0.30.2
+
+    - name: Set HF_TOKEN environment variable
+      run: echo "HF_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }}" >> $GITHUB_ENV
+
+    - name: Upload files to Hugging Face
+      run: python -c "import hugging_face_uploader" # Run the script without the if clause

@@ -4,9 +4,17 @@ import tensorflow as tf
 import numpy as np
 from jiwer import wer
 import re
-from preprocessing import *
 from model import build_model
-from config import rnn_units, rnn_layers, batch_size, default_learning_rate
+from config import (characters, rnn_units, rnn_layers, batch_size,
+                    fft_length, default_learning_rate)
+import keras
+
+# Mapping characters to integers
+char_to_num = keras.layers.StringLookup(vocabulary=characters, oov_token="")
+# Mapping integers back to original characters
+num_to_char = keras.layers.StringLookup(
+    vocabulary=char_to_num.get_vocabulary(), oov_token="", invert=True
+)
 
 # A utility function to decode the output of the network
 def decode_batch_predictions(pred, greedy=True, beam_width=100, top_paths=1):
@@ -35,7 +43,6 @@ def decode_batch_predictions(pred, greedy=True, beam_width=100, top_paths=1):
             output_text.append(result)
         return output_text
 
-
 def load_model():
     model = build_model(
         input_dim=fft_length//2 + 1,
@@ -58,6 +65,7 @@ def load_model():
     return model
 
 if __name__ == '__main__':
+    from preprocessing import *
     train_dataset, validation_dataset = train_and_val_slice(df_train, df_val,
                                                         batch_size=batch_size)
     # Get the model

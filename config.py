@@ -41,6 +41,10 @@ semitones_upper_bound = 2
 noise_level_lower_bound = 0.01
 noise_level_upper_bound = 0.03
 
+####### Vocabulary #########
+# The set of characters accepted in the transcription
+characters = [x for x in "abcdefghijklmnopqrstuvwxyz?! ¿áéíúóñ¡"]
+
 ######## Model ####### 
 run_id = '1048cce1ffbf4e1c8d58d380eb90f485'
 default_initial_epoch = 18 # loads weights from checkpoints/epoch_{initial_epoch}.h5 
@@ -55,3 +59,4 @@ rnn_units=448
 # If using WSL2 on Windows it is better to have the kenlm folder on linux,
 # not on windows
 rescoring_path = "~/arg_audio_transcriptions/rescoring"
+rescoring_demo = False
