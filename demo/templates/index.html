@@ -1,0 +1,258 @@
+<!doctype html>
+<html>
+
+<head>
+  <title>Speech Recognition Demo</title>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    body,
+    main {
+      margin: 0;
+      padding: 0;
+      min-width: 100%;
+      min-height: 100vh;
+      font-family: sans-serif;
+      text-align: center;
+      color: #fff;
+      background: #000;
+    }
+
+    button {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 5em;
+      height: 2em;
+      margin-left: -2.5em;
+      margin-top: -1em;
+      z-index: 100;
+      padding: .25em .5em;
+      color: #fff;
+      background: #000;
+      border: 1px solid #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1.15em;
+      font-weight: 200;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+      transition: box-shadow .5s;
+    }
+
+    button:hover {
+      box-shadow: 0 0 30px 5px rgba(255, 255, 255, 0.75);
+    }
+
+    main {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    main>div {
+      display: inline-block;
+      width: 3px;
+      height: 100px;
+      margin: 0 7px;
+      background: currentColor;
+      transform: scaleY(.5);
+      opacity: .25;
+    }
+
+    main.error {
+      color: #f7451d;
+      min-width: 20em;
+      max-width: 30em;
+      margin: 0 auto;
+      white-space: pre-line;
+    }
+
+    #transcript {
+      position: fixed;
+      top: 60%;
+      width: 100vw;
+      padding-left: 20vw;
+      padding-right: 20vw;
+      font-size: x-large;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <button onclick="init()">start</button>
+  </main>
+  <div id="transcript"></div>
+
+  <script>
+    class AudioVisualizer {
+      constructor(audioContext, processFrame, processError) {
+        this.audioContext = audioContext;
+        this.processFrame = processFrame;
+        this.connectStream = this.connectStream.bind(this);
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          .then(this.connectStream)
+          .catch((error) => {
+            if (processError) {
+              processError(error);
+            }
+          });
+      }
+
+      connectStream(stream) {
+        this.analyser = this.audioContext.createAnalyser();
+        const source = this.audioContext.createMediaStreamSource(stream);
+        source.connect(this.analyser);
+        this.analyser.smoothingTimeConstant = 0.5;
+        this.analyser.fftSize = 32;
+        this.initRenderLoop(this.analyser);
+      }
+
+      initRenderLoop() {
+        const frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+        const processFrame = this.processFrame || (() => { });
+
+        const renderFrame = () => {
+          this.analyser.getByteFrequencyData(frequencyData);
+          processFrame(frequencyData);
+          requestAnimationFrame(renderFrame);
+        };
+        requestAnimationFrame(renderFrame);
+      }
+    }
+
+    const visualMainElement = document.querySelector('main');
+    const visualValueCount = 16;
+    let visualElements;
+
+    const createDOMElements = () => {
+      for (let i = 0; i < visualValueCount; ++i) {
+        const elm = document.createElement('div');
+        visualMainElement.appendChild(elm);
+      }
+      visualElements = document.querySelectorAll('main div');
+    };
+
+    const init = () => {
+      const audioContext = new AudioContext();
+      visualMainElement.innerHTML = '';
+      createDOMElements();
+
+      const dataMap = { 0: 15, 1: 10, 2: 8, 3: 9, 4: 6, 5: 5, 6: 2, 7: 1, 8: 0, 9: 4, 10: 3, 11: 7, 12: 11, 13: 12, 14: 13, 15: 14 };
+      const processFrame = (data) => {
+      const values = Object.values(data);
+      for (let i = 0; i < visualValueCount; ++i) {
+        const value = values[dataMap[i]] / 255;
+        const elmStyles = visualElements[i].style;
+        elmStyles.transform = `scaleY( ${value} )`;
+        elmStyles.opacity = Math.max(.25, value);
+      }
+    };
+
+      const processError = () => {
+        visualMainElement.classList.add('error');
+        visualMainElement.innerText = 'Please allow access to your microphone.';
+      };
+
+      new AudioVisualizer(audioContext, processFrame, processError);
+
+      startVoiceTriggeredRecording();
+
+    };
+
+    // Voice-activated recording
+
+    let mediaRecorder;
+    let audioChunks = [];
+    let recording = false;
+    let silenceTimer;
+    let maxDurationTimer;
+
+    const minVoiceLevel = 7;        // Minimum threshold for voice detection
+    const silenceTimeout = 1500;     // End the audio after ms of silence
+    const maxRecordingTime = 10000;   // Maximum recording duration (ms)
+
+    function startVoiceTriggeredRecording() {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 1024;
+        source.connect(analyser);
+
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks, { type: 'audio/webm' });
+          audioChunks = [];
+
+          const formData = new FormData();
+          formData.append('audio', blob, 'recording.webm');
+
+          fetch(window.location.origin + "/transcribe", {
+            method: 'POST',
+            body: formData
+          })
+            .then(res => res.json())
+            .then(data => {
+              const div = document.getElementById("transcript");
+              if (data.transcription) {
+                div.innerText = (div.innerText + " " + data.transcription).trim();
+              }
+            })
+            .catch(err => {
+              document.getElementById("transcript").innerText += " [Error: " + err.message + "]";
+            });
+
+          setTimeout(startVoiceTriggeredRecording, 0); // Keep listening
+        };
+
+        const buffer = new Uint8Array(analyser.fftSize);
+
+        function detectSound() {
+          analyser.getByteTimeDomainData(buffer);
+          const rms = Math.sqrt(buffer.reduce((sum, val) => sum + Math.pow(val - 128, 2), 0) / buffer.length);
+
+          if (rms > minVoiceLevel) {
+            if (!recording) {
+              mediaRecorder.start();
+              recording = true;
+
+              maxDurationTimer = setTimeout(() => {
+                if (recording) stopRecording();
+              }, maxRecordingTime);
+            }
+
+            clearTimeout(silenceTimer);
+            silenceTimer = setTimeout(() => {
+              if (recording) stopRecording();
+            }, silenceTimeout);
+          }
+
+          requestAnimationFrame(detectSound);
+        }
+
+        detectSound();
+      });
+    }
+
+    function stopRecording() {
+      clearTimeout(silenceTimer);
+      clearTimeout(maxDurationTimer);
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        recording = false;
+      }
+    }
+  </script>
+</body>
+
+</html>
