@@ -28,6 +28,7 @@ if __name__ == '__main__':
             female_df.loc[index, 'first_path'] = 'female_audio'
             female_df.loc[index, 'sr'] = sr
             female_df.loc[index, 'duration'] = duration
+        female_df['transcription_len'] = female_df['transcription'].apply(len)
         
         female_df.to_csv('./data/female_df.csv', index=False)
     
@@ -43,15 +44,17 @@ if __name__ == '__main__':
             duration = librosa.get_duration(y=y, sr=sr)
             male_df.loc[index, 'first_path'] = 'male_audio'
             male_df.loc[index, 'sr'] = sr
+
             male_df.loc[index, 'duration'] = duration
-        
+
+        male_df['transcription_len'] = male_df['transcription'].apply(len)
         male_df.to_csv('./data/male_df.csv', index=False)
     
     print('Female audio descriptive statistics:')
-    print(female_df.describe([0.25, 0.5, 0.75, 0.85, 0.9, 0.95]), '\n')
+    print(female_df.describe([0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 0.98]), '\n')
 
     print('Male audio descriptive statistics:')
-    print(male_df.describe([0.25, 0.5, 0.75, 0.85, 0.9, 0.95]), '\n')
+    print(male_df.describe([0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 0.98]), '\n')
 
     print('Combined dataframe saved')
     df = pd.concat([female_df, male_df], ignore_index=True)
