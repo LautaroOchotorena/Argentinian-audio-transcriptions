@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 from jiwer import wer, cer
 from preprocessing import *
 from inference import decode_batch_predictions
-from config import (fft_length, rnn_units,
-                    rnn_layers, default_initial_epoch, 
+from config import (num_hid, num_head, num_feed_forward,
+                    num_layers_enc, num_layers_dec, default_initial_epoch, 
                     default_learning_rate, run_id, batch_size)
 from mlflow.tracking import MlflowClient
 from model import build_model
@@ -61,20 +61,27 @@ else:
     learning_rate = default_learning_rate
 
 # Builds the model
-model = build_model(
-    input_dim=fft_length//2 + 1,
-    output_dim=char_to_num.vocabulary_size(),
-    rnn_units=rnn_units,
-    rnn_layers=rnn_layers,
-    learning_rate=learning_rate
-)
-model.summary(line_length=110)
+model = build_model(num_hid=num_hid,
+        num_head=num_head,
+        num_feed_forward=num_feed_forward,
+        target_maxlen=max_target_len,
+        num_layers_enc=num_layers_enc,
+        num_layers_dec=num_layers_dec,
+        num_classes=vocab_size + 1,
+        learning_rate=learning_rate)
+
+# Dummy inputs to create the summary
+dummy_source = np.random.rand(batch_size, max_time_len, fft_length//2 + 1)
+dummy_target = np.random.randint(0, model.num_classes, size=(batch_size, max_target_len))
+
+model([dummy_source, dummy_target])
+model.summary()
 
 # A callback class to save
 # metrics and outputs a few transcriptions after each epoch
 class CallbackEval(keras.callbacks.Callback):
     """Displays a few batches of outputs after every epoch."""
-    def __init__(self, dataset, valid_set=True, max_batches=50):
+    def __init__(self, dataset, valid_set=True, max_batches=int(360/batch_size)):
         super().__init__()
         self.valid_set = valid_set
         self.dataset = dataset
@@ -96,14 +103,11 @@ class CallbackEval(keras.callbacks.Callback):
         targets = []
         for batch in dataset:
             X, y = batch
-            batch_predictions = model.predict(X, verbose=0)
+            batch_predictions = model.predict(X, target_start_token_idx=1)[:, 1:]
             batch_predictions = decode_batch_predictions(batch_predictions)
             predictions.extend(batch_predictions)
-            for label in y:
-                label = (
-                    tf.strings.reduce_join(num_to_char(label)).numpy().decode("utf-8")
-                )
-                targets.append(label)
+            batch_y = decode_batch_predictions(y[:, 1:])
+            targets.extend(batch_y)
         wer_score = wer(targets, predictions)
         cer_score = cer(targets, predictions)
         tag = "Validation Set" if self.valid_set else "Part of the Training Set"
@@ -158,7 +162,6 @@ class MetricsPlotCallback(keras.callbacks.Callback):
 
         # === Loss plot ===
         fig, ax = plt.subplots(figsize=(8, 5))
-        plt.figure(figsize=(8, 5))
         ax.plot(range(1, len(loss_vals) + 1), loss_vals,
                  label="loss", color="blue")
         ax.plot(range(1, len(val_loss_vals) + 1), val_loss_vals,
@@ -317,10 +320,15 @@ with run:
     # If new run then stores the initial params
     if not run_id:
         mlflow.log_param("initial_epoch", initial_epoch)
-        mlflow.log_param("model_type", "CTC")
-        mlflow.log_param("input_dim", fft_length//2 + 1)
-        mlflow.log_param("rnn_units", rnn_units)
-        mlflow.log_param("rnn_layers", rnn_layers)
+        mlflow.log_param("model_type", "Transformer")
+        mlflow.log_param("target_maxlen", max_target_len)
+        mlflow.log_param("input_dim_speech_feature_embedding",
+                         (max_time_len, fft_length//2 + 1))
+        mlflow.log_param("num_hid", num_hid)
+        mlflow.log_param("num_feed_forward", num_feed_forward)
+        mlflow.log_param("num_layers_enc", num_layers_enc)
+        mlflow.log_param("num_layers_dec", num_layers_dec)
+        mlflow.log_param("num_head", num_head)
         run_id = run.info.run_id
 
     # Train the model
