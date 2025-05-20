@@ -10,9 +10,6 @@ class TokenEmbedding(layers.Layer):
         super().__init__()
         self.emb = keras.layers.Embedding(num_vocab, num_hid)
         self.pos_emb = layers.Embedding(input_dim=maxlen, output_dim=num_hid)
-        
-    def build(self, input_shape):
-        super().build(input_shape)
 
     def call(self, x):
         maxlen = tf.shape(x)[-1]
@@ -27,7 +24,7 @@ class TokenEmbedding(layers.Layer):
 
 
 class SpeechFeatureEmbedding(layers.Layer):
-    def __init__(self, num_hid=64, maxlen=100):
+    def __init__(self, num_hid=64):
         super().__init__()
         self.conv1 = keras.layers.Conv1D(
             num_hid, 11, strides=2, padding="same", activation="relu"
@@ -43,6 +40,12 @@ class SpeechFeatureEmbedding(layers.Layer):
         x = self.conv1(x)
         x = self.conv2(x)
         return self.conv3(x)
+    
+    def compute_output_shape(self, input_shape):
+        x = self.conv1.compute_output_shape(input_shape)
+        x = self.conv2.compute_output_shape(x)
+        x = self.conv3.compute_output_shape(x)
+        return x
 
 class TransformerEncoder(layers.Layer):
     def __init__(self, embed_dim, num_heads, feed_forward_dim, dropout_rate=0.1):
@@ -58,9 +61,6 @@ class TransformerEncoder(layers.Layer):
         self.layernorm2 = layers.LayerNormalization(epsilon=1e-6)
         self.dropout1 = layers.Dropout(dropout_rate)
         self.dropout2 = layers.Dropout(dropout_rate)
-
-    def build(self, input_shape):
-        super().build(input_shape)
 
     def call(self, inputs, training=False):
         attn_output = self.att(inputs, inputs)
@@ -92,9 +92,6 @@ class TransformerDecoder(layers.Layer):
                 layers.Dense(embed_dim),
             ]
         )
-
-    def build(self, input_shape):
-        super().build(input_shape)
 
     def causal_attention_mask(self, batch_size, n_dest, n_src, dtype):
         """Masks the upper half of the dot product matrix in self attention.
@@ -134,7 +131,6 @@ class Transformer(keras.Model):
         num_hid=64,
         num_head=2,
         num_feed_forward=128,
-        source_maxlen=100,
         target_maxlen=100,
         num_layers_enc=4,
         num_layers_dec=1,
@@ -239,6 +235,53 @@ class Transformer(keras.Model):
 
         return dec_input
 
+
+class CustomSchedule(keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(
+        self,
+        init_lr=0.00001,
+        lr_after_warmup=0.001,
+        final_lr=0.00001,
+        warmup_epochs=15,
+        decay_epochs=85,
+        steps_per_epoch=203,
+    ):
+        super().__init__()
+        self.init_lr = init_lr
+        self.current_lr = init_lr
+        self.lr_after_warmup = lr_after_warmup
+        self.final_lr = final_lr
+        self.warmup_epochs = warmup_epochs
+        self.decay_epochs = decay_epochs
+        self.steps_per_epoch = steps_per_epoch
+        # Cap to limit the maximum allowed learning rate (can be reduced with halve_learning_rate())
+        self.lr_cap = lr_after_warmup
+
+    def calculate_lr(self, epoch):
+        """Linear warmup followed by linear decay, with a maximum cap (lr_cap)."""
+        warmup_lr = (
+            self.init_lr
+            + ((self.lr_after_warmup - self.init_lr) / max(self.warmup_epochs - 1, 1)) * epoch
+        )
+        decay_lr = tf.math.maximum(
+            self.final_lr,
+            self.lr_after_warmup
+            - (epoch - self.warmup_epochs)
+            * (self.lr_after_warmup - self.final_lr)
+            / self.decay_epochs,
+        )
+        return tf.math.minimum(tf.math.minimum(warmup_lr, decay_lr), self.lr_cap)
+
+    def __call__(self, step):
+        epoch = tf.cast(step // self.steps_per_epoch, tf.float32)
+        return self.calculate_lr(epoch)
+
+    def halve_learning_rate(self, reduce_factor=0.5):
+        """Halves the current learning rate cap, not going below the final_lr."""
+        new_cap = max(self.lr_cap * reduce_factor, self.final_lr)
+        self.lr_cap = new_cap
+        return new_cap
+    
 def build_model(num_hid=200,
         num_head=2,
         num_feed_forward=400,
@@ -246,7 +289,8 @@ def build_model(num_hid=200,
         num_layers_enc=4,
         num_layers_dec=2,
         num_classes=vocab_size + 1,
-        learning_rate=1e-4):
+        learning_rate=1e-4,
+        dropout_rate=0.1):
     
     model = Transformer(
         num_hid=num_hid,
@@ -256,13 +300,6 @@ def build_model(num_hid=200,
         num_layers_enc=num_layers_enc,
         num_layers_dec=num_layers_dec,
         num_classes=num_classes,
+        dropout_rate=dropout_rate
     )
-
-    loss_fn = keras.losses.CategoricalCrossentropy(
-    from_logits=True,
-    label_smoothing=0.1,
-    )
-
-    optimizer = keras.optimizers.Adam(learning_rate)
-    model.compile(optimizer=optimizer, loss=loss_fn)
     return model
