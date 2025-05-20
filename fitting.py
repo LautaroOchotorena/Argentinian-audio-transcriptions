@@ -15,9 +15,10 @@ from preprocessing import *
 from inference import decode_batch_predictions
 from config import (num_hid, num_head, num_feed_forward,
                     num_layers_enc, num_layers_dec, default_initial_epoch, 
-                    default_learning_rate, run_id, batch_size)
+                    default_learning_rate, dropout_rate,
+                    run_id, batch_size)
 from mlflow.tracking import MlflowClient
-from model import build_model
+from model import build_model, CustomSchedule
 
 # Loads the trainning and validation dataset
 train_dataset, validation_dataset = train_and_val_slice(df_train, df_val,
@@ -67,8 +68,27 @@ model = build_model(num_hid=num_hid,
         target_maxlen=max_target_len,
         num_layers_enc=num_layers_enc,
         num_layers_dec=num_layers_dec,
-        num_classes=vocab_size + 1,
-        learning_rate=learning_rate)
+        num_classes=vocab_size,
+        learning_rate=learning_rate,
+        dropout_rate=dropout_rate)
+
+
+loss_fn = keras.losses.CategoricalCrossentropy(
+from_logits=True,
+label_smoothing=0.1,
+)
+
+scheduler_lr = CustomSchedule(
+init_lr=0.00001,
+lr_after_warmup=default_learning_rate,
+final_lr=0.00005,
+warmup_epochs=10,
+decay_epochs=85,
+steps_per_epoch=len(train_dataset),
+)
+
+optimizer = keras.optimizers.Adam(scheduler_lr)
+model.compile(optimizer=optimizer, loss=loss_fn)
 
 # Dummy inputs to create the summary
 dummy_source = np.random.rand(batch_size, max_time_len, fft_length//2 + 1)
@@ -99,11 +119,20 @@ class CallbackEval(keras.callbacks.Callback):
                 mlflow.log_metric("val_loss", logs['val_loss'], step=epoch+1)
         else:
             dataset = self.dataset
+            # Store the learning rate as a metric
+            lr = self.model.optimizer.learning_rate
+            lr = float(K.get_value(lr))
+            mlflow.log_metric("learning_rate", lr, step=epoch+1)
+        
+        # Calculate wer and cer only every 5 epochs
+        if (epoch + 1) % 5 != 0 and (epoch + 1) != 1:
+            return
+        
         predictions = []
         targets = []
         for batch in dataset:
             X, y = batch
-            batch_predictions = model.predict(X, target_start_token_idx=1)[:, 1:]
+            batch_predictions = model.predict(X, target_start_token_idx=2)[:, 1:]
             batch_predictions = decode_batch_predictions(batch_predictions)
             predictions.extend(batch_predictions)
             batch_y = decode_batch_predictions(y[:, 1:])
@@ -124,11 +153,6 @@ class CallbackEval(keras.callbacks.Callback):
                 print(f"Target    : {targets[i]}")
                 print(f"Prediction: {predictions[i]}")
                 print("-" * 100)
-            
-            # Store the learning rate as a metric
-            lr = self.model.optimizer.learning_rate
-            lr = float(K.get_value(lr))
-            mlflow.log_metric("learning_rate", lr, step=epoch+1)
         else:
             mlflow.log_metric("wer_score", wer_score, step=epoch+1)
             mlflow.log_metric("cer_score", cer_score, step=epoch+1)
@@ -155,17 +179,15 @@ class MetricsPlotCallback(keras.callbacks.Callback):
         wer = self.client.get_metric_history(self.run_id, "wer_score")
         val_wer = self.client.get_metric_history(self.run_id, "val_wer_score")
 
-        loss_vals = [m.value for m in sorted(loss, key=lambda x: x.step)]
-        val_loss_vals = [m.value for m in sorted(val_loss, key=lambda x: x.step)]
-        wer_vals = [m.value for m in sorted(wer, key=lambda x: x.step)]
-        val_wer_vals = [m.value for m in sorted(val_wer, key=lambda x: x.step)]
+        loss_vals = [(m.step, m.value) for m in sorted(loss, key=lambda x: x.step)]
+        val_loss_vals = [(m.step, m.value) for m in sorted(val_loss, key=lambda x: x.step)]
+        wer_vals = [(m.step, m.value) for m in sorted(wer, key=lambda x: x.step)]
+        val_wer_vals = [(m.step, m.value) for m in sorted(val_wer, key=lambda x: x.step)]
 
         # === Loss plot ===
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.plot(range(1, len(loss_vals) + 1), loss_vals,
-                 label="loss", color="blue")
-        ax.plot(range(1, len(val_loss_vals) + 1), val_loss_vals,
-                 label="val_loss", color="orange")
+        ax.plot(*zip(*loss_vals), label="loss", color="blue")
+        ax.plot(*zip(*val_loss_vals), label="val_loss", color="orange")
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         ax.set_title("Loss vs Val_Loss")
         ax.set_xlabel("Epoch")
@@ -178,8 +200,8 @@ class MetricsPlotCallback(keras.callbacks.Callback):
 
         # === WER plot ===
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.plot(range(1, len(wer_vals) + 1), wer_vals, label="wer", color="green")
-        ax.plot(range(1, len(val_wer_vals) + 1), val_wer_vals, label="val_wer", color="red")
+        ax.plot(*zip(*wer_vals), label="wer", color="green")
+        ax.plot(*zip(*val_wer_vals), label="val_wer", color="red")
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # Fuerza ticks enteros
         ax.set_title("WER vs Val_WER")
         ax.set_xlabel("Epoch")
@@ -214,10 +236,9 @@ if initial_epoch > 0 and run_id:
     checkpoint.restore(checkpoint_dir + f'/ckpt-{initial_epoch}')
     print(f"Checkpoint cargado")
 
-class MLFlowEarlyStopping_and_reduce_lr(EarlyStopping):
+class MLFlowEarlyStopping_and_reduce_lr_cap(EarlyStopping):
     def __init__(self, run_id=None, monitor='val_loss',
                  early_stop_patience=6, min_delta=0.0,
-                 min_lr=1e-6,
                  reduce_lr_factor=0.5,
                  reduce_lr_patience=3,
                  verbose=1, **kwargs):
@@ -235,7 +256,6 @@ class MLFlowEarlyStopping_and_reduce_lr(EarlyStopping):
         self.wait_reduce_lr = 0
         self.reduce_lr_patience = reduce_lr_patience
         self.reduce_lr_factor = reduce_lr_factor
-        self.min_lr = min_lr
 
         if run_id:
             self._load_best()
@@ -295,18 +315,13 @@ class MLFlowEarlyStopping_and_reduce_lr(EarlyStopping):
                 print(f'Best val_loss: {self.best_value:.4f} at epoch {self.best_epoch + 1}')
 
         if self.wait_reduce_lr >= self.reduce_lr_patience:
-            # Obtains the current lr
-            lr = self.model.optimizer.learning_rate
-
-            old_lr = float(K.get_value(lr))
             # Applies the reduce lr
-            new_lr = max(old_lr * self.reduce_lr_factor, self.min_lr)
-            lr.assign(new_lr)
+            new_lr_cap = scheduler_lr.halve_learning_rate(reduce_factor=self.reduce_lr_factor)
             self.wait_reduce_lr = 0
             if self.verbose > 0:
-                print(f"Epoch {epoch + 1}: learning rate reduce to = {new_lr}")
+                print(f"Epoch {epoch + 1}: learning rate cap reduce to = {new_lr_cap}")
 
-EarlyStopping_and_reduce_lr = MLFlowEarlyStopping_and_reduce_lr(run_id, monitor='val_loss',
+EarlyStopping_and_reduce_lr_cap = MLFlowEarlyStopping_and_reduce_lr_cap(run_id, monitor='val_loss',
                                                                 early_stop_patience=6,
                                                                 min_delta=0.0,
                                                                 reduce_lr_factor=0.5,
@@ -338,13 +353,13 @@ with run:
         epochs=epochs,
         # train_callback has to be after EarlyStopping_and_reduce_lr
         # (EarlyStopping_and_reduce_lr has to use loss only from previous epochs and
-        # train_callback stores de loss from the current epoch)
+        # train_callback stores the loss from the current epoch)
         # validation_callback has to be before EarlyStopping_and_reduce_lr
         # (validation_callback stores de lr from the current epoch and then 
         # EarlyStopping_and_reduce_lr reduce the lr if needed)
         callbacks=[save_weights_and_optimizer_state(checkpoint_dir),
                    validation_callback,
-                   EarlyStopping_and_reduce_lr,
+                   EarlyStopping_and_reduce_lr_cap,
                    train_callback,
                    MetricsPlotCallback(run_id=run_id)],
         initial_epoch=initial_epoch
