@@ -49,33 +49,29 @@ val_roots = df_val["audio_path"].tolist()
 def is_not_val_aug(path):
     return not any(path.startswith('augmentation/' + root) for root in val_roots)
 
+df_train = df_train[df_train["audio_path"].apply(is_not_val_aug)]
+
 # Mapping characters to integers
 char_to_num = keras.layers.StringLookup(vocabulary=["<", ">"] + characters,
-                                        oov_token="",
-                                        pad_to_max_tokens=True,
-                                        max_tokens=max_target_len)
+                                        mask_token="",
+                                        oov_token="-")
 # Mapping integers back to original characters
 num_to_char = keras.layers.StringLookup(
             vocabulary=char_to_num.get_vocabulary(),
-            oov_token="", invert=True)
+            mask_token="",
+            oov_token="-", invert=True)
 
 class VectorizeChar:
     """It adds the start of sequence (SOS) and
     end of sequence (EOS) tokens to the text,
     and then converts it to numbers"""
-    def __init__(self, characters):
-        self.vocab = ["<", ">"] + list(characters)
-
     def __call__(self, text):
         text = tf.strings.substr(text, 0, max_target_len - 2)
         text = tf.strings.join(["<", text, ">"])
         text = tf.strings.unicode_split(text, input_encoding="UTF-8")
         return tf.cast(char_to_num(text), tf.int32)
 
-    def get_vocabulary(self):
-        return self.vocab
-
-vectorizer = VectorizeChar(characters)
+vectorizer = VectorizeChar()
 vocab_size = char_to_num.vocabulary_size()
 
 def load_npy_sample(npy_file, label):
