@@ -52,7 +52,7 @@ def test_basic_transcription():
     audio = dummy_audio()
     spectrogram = extract_spectrogram(audio=audio)
     batch = np.expand_dims(spectrogram, axis=0)
-    model.predict(batch, verbose=0)
+    model.predict(batch, target_start_token_idx=2, target_end_token_idx=3)[:, 1:]
 
 test_basic_transcription()
 
@@ -100,12 +100,9 @@ def transcribe():
     try:
         spectrogram = extract_spectrogram(audio=audio)
 
-        # Preprocesar input
         spectrogram = np.expand_dims(spectrogram, axis=0)
-
-        batch_prediction = model.predict(spectrogram, verbose=0)
-        transcriptions = decode_batch_predictions(batch_prediction, greedy=greedy, beam_width=beam_width, top_paths=top_paths)[0]
-        
+        batch_predictions = model.predict(spectrogram, target_start_token_idx=2, target_end_token_idx=3)[:, 1:]
+        transcriptions = decode_batch_predictions(batch_predictions)[0]
         if rescoring_demo:
             scores = []
             for transcription in transcriptions:
