@@ -80,7 +80,6 @@ def load_npy_sample(npy_file, label):
     
     # Outputs a tensor to be compatible with tf.data.Dataset
     spectrogram = tf.numpy_function(np.load, [npy_path], tf.float32)
-    spectrogram.set_shape([None, fft_length // 2 + 1])
 
     # padding for the spectrogram
     paddings = tf.constant([[0, max_time_len], [0, 0]])
@@ -103,7 +102,7 @@ def train_and_val_slice(df_train, df_val, batch_size=batch_size):
         .map(load_npy_sample, num_parallel_calls=tf.data.AUTOTUNE)
         .padded_batch(batch_size, padded_shapes=(
             [max_time_len, fft_length//2 + 1],  # audio: time, freq_bins
-            [max_target_len]       # label: variable length sequence
+            [max_target_len]       # label: len max
         ), padding_values=(tf.constant(0, dtype=tf.float32),
                            tf.constant(0, dtype=tf.int32))
         )
@@ -120,7 +119,7 @@ def train_and_val_slice(df_train, df_val, batch_size=batch_size):
         .map(load_npy_sample, num_parallel_calls=tf.data.AUTOTUNE)
         .padded_batch(batch_size, padded_shapes=(
             [max_time_len, fft_length//2 + 1],  # audio: time, freq_bins
-            [max_target_len]       # label: variable length sequence
+            [max_target_len]       # label: len max
         ), padding_values=(tf.constant(0, dtype=tf.float32),
                            tf.constant(0, dtype=tf.int32))
         )
@@ -129,8 +128,11 @@ def train_and_val_slice(df_train, df_val, batch_size=batch_size):
 
     return train_dataset, validation_dataset
 
+# Loads the trainning and validation dataset
+train_dataset, validation_dataset = train_and_val_slice(df_train, df_val,
+                                                        batch_size=batch_size)
+
 if __name__ == '__main__':
-    train_dataset, validation_dataset = train_and_val_slice(df_train, df_val)
     for spectrogram_batch, label_batch in train_dataset.take(1):
         print("Spectrogram batch shape:", spectrogram_batch.shape)
         print("Label batch shape:", label_batch.shape)
