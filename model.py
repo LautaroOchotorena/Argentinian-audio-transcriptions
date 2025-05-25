@@ -3,7 +3,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 import keras
 from tensorflow.keras import layers
-from preprocessing import *
+from config import default_learning_rate, l2_reg
 
 class TokenEmbedding(layers.Layer):
     def __init__(self, num_vocab=1000, maxlen=100, num_hid=64):
@@ -27,13 +27,16 @@ class SpeechFeatureEmbedding(layers.Layer):
     def __init__(self, num_hid=64):
         super().__init__()
         self.conv1 = keras.layers.Conv1D(
-            num_hid, 11, strides=2, padding="same", activation="relu"
+            num_hid, 11, strides=2, padding="same", activation="relu",
+            kernel_regularizer=tf.keras.regularizers.L2(l2_reg)
         )
         self.conv2 = keras.layers.Conv1D(
-            num_hid, 11, strides=2, padding="same", activation="relu"
+            num_hid, 11, strides=2, padding="same", activation="relu",
+            kernel_regularizer=tf.keras.regularizers.L2(l2_reg)
         )
         self.conv3 = keras.layers.Conv1D(
-            num_hid, 11, strides=2, padding="same", activation="relu"
+            num_hid, 11, strides=2, padding="same", activation="relu",
+            kernel_regularizer=tf.keras.regularizers.L2(l2_reg)
         )
 
     def call(self, x):
@@ -53,8 +56,8 @@ class TransformerEncoder(layers.Layer):
         self.att = layers.MultiHeadAttention(num_heads=num_heads, key_dim=embed_dim)
         self.ffn = keras.Sequential(
             [
-                layers.Dense(feed_forward_dim, activation="relu"),
-                layers.Dense(embed_dim),
+                layers.Dense(feed_forward_dim, activation="relu", kernel_regularizer=tf.keras.regularizers.L2(l2_reg)),
+                layers.Dense(embed_dim, kernel_regularizer=tf.keras.regularizers.L2(l2_reg)),
             ]
         )
         self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
@@ -88,8 +91,8 @@ class TransformerDecoder(layers.Layer):
         self.ffn_dropout = layers.Dropout(dropout_rate)
         self.ffn = keras.Sequential(
             [
-                layers.Dense(feed_forward_dim, activation="relu"),
-                layers.Dense(embed_dim),
+                layers.Dense(feed_forward_dim, activation="relu", kernel_regularizer=tf.keras.regularizers.L2(l2_reg)),
+                layers.Dense(embed_dim, kernel_regularizer=tf.keras.regularizers.L2(l2_reg)),
             ]
         )
 
@@ -135,9 +138,20 @@ class Transformer(keras.Model):
         num_layers_enc=4,
         num_layers_dec=1,
         num_classes=10,
-        dropout_rate=0.1
+        dropout_rate=0.1,
+        learning_rate=default_learning_rate,
+        steps_per_epoch=400
     ):
         super().__init__()
+
+        self.scheduler_lr = CustomSchedule(
+        init_lr=0.00001,
+        lr_after_warmup=learning_rate,
+        final_lr=0.00005,
+        warmup_epochs=15,
+        decay_epochs=45,
+        steps_per_epoch=steps_per_epoch,
+        )
         self.loss_metric = keras.metrics.Mean(name="loss")
         self.num_layers_enc = num_layers_enc
         self.num_layers_dec = num_layers_dec
@@ -164,7 +178,7 @@ class Transformer(keras.Model):
                 TransformerDecoder(num_hid, num_head, num_feed_forward, dropout_rate),
             )
 
-        self.classifier = layers.Dense(num_classes)
+        self.classifier = layers.Dense(num_classes, kernel_regularizer=tf.keras.regularizers.L2(l2_reg))
     
     def encode(self, source):
         y = self.enc_input(source)
@@ -218,7 +232,7 @@ class Transformer(keras.Model):
         self.loss_metric.update_state(loss)
         return {"loss": self.loss_metric.result()}
 
-    def predict(self, source, target_start_token_idx):
+    def predict(self, source, target_start_token_idx, target_end_token_idx):
         """Performs inference over one batch of inputs using greedy decoding."""
         bs = tf.shape(source)[0]
         enc = self.encode(source)
@@ -233,8 +247,11 @@ class Transformer(keras.Model):
             dec_logits.append(last_logit)
             dec_input = tf.concat([dec_input, last_logit], axis=-1)
 
-        return dec_input
+            # Break if all sequences have produced the end token
+            if tf.reduce_all(tf.equal(last_logit, target_end_token_idx)):
+                break
 
+        return dec_input
 
 class CustomSchedule(keras.optimizers.schedules.LearningRateSchedule):
     def __init__(
@@ -285,12 +302,13 @@ class CustomSchedule(keras.optimizers.schedules.LearningRateSchedule):
 def build_model(num_hid=200,
         num_head=2,
         num_feed_forward=400,
-        target_maxlen=max_target_len,
+        target_maxlen=100,
         num_layers_enc=4,
         num_layers_dec=2,
-        num_classes=vocab_size + 1,
-        learning_rate=1e-4,
-        dropout_rate=0.1):
+        num_classes=34,
+        learning_rate=default_learning_rate,
+        dropout_rate=0.1,
+        steps_per_epoch=400):
     
     model = Transformer(
         num_hid=num_hid,
@@ -300,6 +318,16 @@ def build_model(num_hid=200,
         num_layers_enc=num_layers_enc,
         num_layers_dec=num_layers_dec,
         num_classes=num_classes,
-        dropout_rate=dropout_rate
+        dropout_rate=dropout_rate,
+        learning_rate=learning_rate,
+        steps_per_epoch=steps_per_epoch
     )
+
+    loss_fn = keras.losses.CategoricalCrossentropy(
+    from_logits=True,
+    label_smoothing=0.1,
+    )
+
+    optimizer = keras.optimizers.Adam(model.scheduler_lr)
+    model.compile(optimizer=optimizer, loss=loss_fn)
     return model
