@@ -18,11 +18,7 @@ from config import (num_hid, num_head, num_feed_forward,
                     default_learning_rate, dropout_rate,
                     run_id, batch_size)
 from mlflow.tracking import MlflowClient
-from model import build_model, CustomSchedule
-
-# Loads the trainning and validation dataset
-train_dataset, validation_dataset = train_and_val_slice(df_train, df_val,
-                                                        batch_size=batch_size)
+from model import build_model
 
 # MLflow
 # If a run_id is given then takes the last epoch and learning rate to continue
@@ -36,30 +32,21 @@ if run_id:
         # Acces to the learning rate metric
         metrics = client.get_metric_history(run_id, "learning_rate")
         if metrics:
-            # Takes the last value of the learning rate
-            last_learning_rate = metrics[-1].value
-            print(f"Last learning_rate found in MLflow: {last_learning_rate}")
-            learning_rate = last_learning_rate
             # Last epoch that was trained
             initial_epoch = len(metrics)
             print(f"Last epoch trained: {initial_epoch}")
         else:
-            # No metric was recorded
-            print("No learning_rate found, using default values")
-            learning_rate = default_learning_rate
             initial_epoch = default_initial_epoch
             print(f"First epoch to train: {default_initial_epoch}")
 
     except Exception as e:
         print(f"Error obtaining learning_rate: {e}. Using default values")
-        learning_rate = default_learning_rate
         initial_epoch = default_initial_epoch
         print(f"First epoch to train: {default_initial_epoch}")
 else:
     print("Creating a new run")
     run = mlflow.start_run(run_name="transcription_model")
     initial_epoch = default_initial_epoch
-    learning_rate = default_learning_rate
 
 # Builds the model
 model = build_model(num_hid=num_hid,
@@ -69,28 +56,12 @@ model = build_model(num_hid=num_hid,
         num_layers_enc=num_layers_enc,
         num_layers_dec=num_layers_dec,
         num_classes=vocab_size,
-        learning_rate=learning_rate,
-        dropout_rate=dropout_rate)
-
-
-loss_fn = keras.losses.CategoricalCrossentropy(
-from_logits=True,
-label_smoothing=0.1,
-)
-
-scheduler_lr = CustomSchedule(
-init_lr=0.00001,
-lr_after_warmup=default_learning_rate,
-final_lr=0.00005,
-warmup_epochs=10,
-decay_epochs=85,
-steps_per_epoch=len(train_dataset),
-)
-
-optimizer = keras.optimizers.Adam(scheduler_lr)
-model.compile(optimizer=optimizer, loss=loss_fn)
+        learning_rate=default_learning_rate,
+        dropout_rate=dropout_rate,
+        steps_per_epoch=len(train_dataset))
 
 # Dummy inputs to create the summary
+# It builds the model, necessary to then restore weights
 dummy_source = np.random.rand(batch_size, max_time_len, fft_length//2 + 1)
 dummy_target = np.random.randint(0, model.num_classes, size=(batch_size, max_target_len))
 
@@ -132,8 +103,8 @@ class CallbackEval(keras.callbacks.Callback):
         targets = []
         for batch in dataset:
             X, y = batch
-            batch_predictions = model.predict(X, target_start_token_idx=2)[:, 1:]
-            batch_predictions = decode_batch_predictions(batch_predictions)
+            batch_predictions = model.predict(X, target_start_token_idx=2, target_end_token_idx=3)[:, 1:]
+            batch_predictions = decode_batch_predictions(batch_predictions, target_end_token_idx=3)
             predictions.extend(batch_predictions)
             batch_y = decode_batch_predictions(y[:, 1:])
             targets.extend(batch_y)
@@ -178,11 +149,15 @@ class MetricsPlotCallback(keras.callbacks.Callback):
         val_loss = self.client.get_metric_history(self.run_id, "val_loss")
         wer = self.client.get_metric_history(self.run_id, "wer_score")
         val_wer = self.client.get_metric_history(self.run_id, "val_wer_score")
+        cer = self.client.get_metric_history(self.run_id, "cer_score")
+        val_cer = self.client.get_metric_history(self.run_id, "val_cer_score")
 
         loss_vals = [(m.step, m.value) for m in sorted(loss, key=lambda x: x.step)]
         val_loss_vals = [(m.step, m.value) for m in sorted(val_loss, key=lambda x: x.step)]
         wer_vals = [(m.step, m.value) for m in sorted(wer, key=lambda x: x.step)]
         val_wer_vals = [(m.step, m.value) for m in sorted(val_wer, key=lambda x: x.step)]
+        cer_vals = [(m.step, m.value) for m in sorted(cer, key=lambda x: x.step)]
+        val_cer_vals = [(m.step, m.value) for m in sorted(val_cer, key=lambda x: x.step)]
 
         # === Loss plot ===
         fig, ax = plt.subplots(figsize=(8, 5))
@@ -200,9 +175,9 @@ class MetricsPlotCallback(keras.callbacks.Callback):
 
         # === WER plot ===
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.plot(*zip(*wer_vals), label="wer", color="green")
-        ax.plot(*zip(*val_wer_vals), label="val_wer", color="red")
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # Fuerza ticks enteros
+        ax.plot(*zip(*wer_vals), label="wer", color="blue")
+        ax.plot(*zip(*val_wer_vals), label="val_wer", color="orange")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # Integer ticks
         ax.set_title("WER vs Val_WER")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Word Error Rate")
@@ -210,6 +185,20 @@ class MetricsPlotCallback(keras.callbacks.Callback):
         ax.grid(True)
         fig.tight_layout()
         fig.savefig(os.path.join(self.save_dir, f"wer_plot.png"))
+        plt.close(fig)
+
+        # === CER plot ===
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.plot(*zip(*cer_vals), label="cer", color="blue")
+        ax.plot(*zip(*val_cer_vals), label="val_cer", color="orange")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))   # Integer ticks
+        ax.set_title("CER vs Val_CER")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Character Error Rate")
+        ax.legend()
+        ax.grid(True)
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.save_dir, f"cer_plot.png"))
         plt.close(fig)
 
 checkpoint = tf.train.Checkpoint(model=model, optimizer=model.optimizer)
@@ -232,9 +221,9 @@ class save_weights_and_optimizer_state(tf.keras.callbacks.Callback):
 checkpoint_dir = 'checkpoints'
 # If a intial_epoch was passed then it restores the weights
 # and the optimizer state from that epoch
-if initial_epoch > 0 and run_id:
+if initial_epoch > 0:
     checkpoint.restore(checkpoint_dir + f'/ckpt-{initial_epoch}')
-    print(f"Checkpoint cargado")
+    print(f"Checkpoint loaded")
 
 class MLFlowEarlyStopping_and_reduce_lr_cap(EarlyStopping):
     def __init__(self, run_id=None, monitor='val_loss',
@@ -276,12 +265,25 @@ class MLFlowEarlyStopping_and_reduce_lr_cap(EarlyStopping):
             self.best_epoch, self.best_value = min(losses, key=lambda x: x[1])
             last_epoch = metrics[-1].step
 
+            # Count how many times the loss wasn't improving after self.reduce_lr_patience epochs
+            count = 0
+            streak = 0
+            for i in range(1, len(losses)):
+                if losses[i][1] >= losses[i-1][1]:
+                    streak += 1
+                else:
+                    streak = 0
+
+                if streak == self.reduce_lr_patience:
+                    count += 1
+                    streak = 0
+
+            for _ in range(count):
+                model.scheduler_lr.halve_learning_rate(reduce_factor=self.reduce_lr_factor)
+
             # how many epochs without improvement from the last learning rate change
-            if last_epoch - self.best_epoch >= self.reduce_lr_patience:
-                self.wait_reduce_lr = (last_epoch - self.best_epoch) % self.reduce_lr_patience
-            else:
-                self.wait_reduce_lr = last_epoch - self.best_epoch
-            # how many epochs without improvement
+            self.wait_reduce_lr = streak
+            # how many epochs without improvement at all
             self.wait_early_stop = last_epoch - self.best_epoch
 
             print(f"[MLFlowEarlyStopping] Best val_loss: {self.best_value:.4f} at epoch {self.best_epoch}")
@@ -315,8 +317,8 @@ class MLFlowEarlyStopping_and_reduce_lr_cap(EarlyStopping):
                 print(f'Best val_loss: {self.best_value:.4f} at epoch {self.best_epoch + 1}')
 
         if self.wait_reduce_lr >= self.reduce_lr_patience:
-            # Applies the reduce lr
-            new_lr_cap = scheduler_lr.halve_learning_rate(reduce_factor=self.reduce_lr_factor)
+            # Applies the reduce lr cap
+            new_lr_cap = model.scheduler_lr.halve_learning_rate(reduce_factor=self.reduce_lr_factor)
             self.wait_reduce_lr = 0
             if self.verbose > 0:
                 print(f"Epoch {epoch + 1}: learning rate cap reduce to = {new_lr_cap}")
