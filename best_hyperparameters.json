@@ -1,0 +1,13 @@
+{
+    "num_hid": 200,
+    "num_head": 2,
+    "num_feed_forward": 300,
+    "num_layers_enc": 6,
+    "num_layers_dec": 2,
+    "learning_rate": 0.0009773430262285175,
+    "dropout_rate": 0.30000000000000004,
+    "tuner/epochs": 15,
+    "tuner/initial_epoch": 0,
+    "tuner/bracket": 0,
+    "tuner/round": 0
+}
