@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import re
 from jiwer import wer, cer
 from huggingface_hub import hf_hub_download
 import os
@@ -10,10 +9,14 @@ import sys
 # Add a directoy to acces other files
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(parent_dir)
-from config import (fft_length, rnn_units, rnn_layers, default_learning_rate)
 from preprocessing import *
 from inference import decode_batch_predictions, load_model
 from extract_spectrogram import extract_spectrogram
+from dotenv import load_dotenv
+
+# Load the hf token
+load_dotenv() 
+token = os.getenv("HF_TOKEN")
 
 # Load the model
 model = load_model()
@@ -29,8 +32,8 @@ def test_basic_transcription():
     audio = dummy_audio()
     spectrogram = extract_spectrogram(audio=audio)
     batch = np.expand_dims(spectrogram, axis=0)
-    batch_predictions = model.predict(batch)
-    batch_predictions = decode_batch_predictions(batch_predictions)
+    batch_predictions = model.predict(batch, target_start_token_idx=2, target_end_token_idx=3)[:, 1:]
+    batch_predictions = decode_batch_predictions(batch_predictions, target_end_token_idx=3)
     prediction = batch_predictions[0]
     
     assert isinstance(prediction, str)
@@ -62,12 +65,11 @@ def test_inference_with_example():
         targets = []
         for batch in example:
             X, y = batch
-            batch_predictions = model.predict(X)
-            batch_predictions = decode_batch_predictions(batch_predictions)
+            batch_predictions = model.predict(X, target_start_token_idx=2, target_end_token_idx=3)[:, 1:]
+            batch_predictions = decode_batch_predictions(batch_predictions, target_end_token_idx=3)
             predictions.extend(batch_predictions)
-            for label in y:
-                label = tf.strings.reduce_join(num_to_char(label)).numpy().decode("utf-8")
-                targets.append(label)
+            batch_y = decode_batch_predictions(y[:, 1:])
+            targets.extend(batch_y)
 
         error_wer = wer(predictions, targets)
         error_cer = cer(predictions, targets)

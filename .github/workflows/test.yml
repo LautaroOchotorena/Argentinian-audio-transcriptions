@@ -4,6 +4,7 @@ on:
   push:
     branches: [master, transformer]
   pull_request:
+    branches: [master, transformer]
 
 jobs:
   test-inference:
@@ -28,7 +29,14 @@ jobs:
       run: |
         mkdir temp_repo
         cd temp_repo
-        git clone https://huggingface.co/LautaroOcho/Argentinian-audio-transcriptions .
+        # Determinar la rama remota a usar (main o transformer)
+        if [[ "${GITHUB_REF_NAME}" == "master" ]]; then
+          BRANCH="main"
+        else
+          BRANCH="${GITHUB_REF_NAME}"
+        fi
+        echo "Cloning branch $BRANCH from Hugging Face repo"
+        git clone --branch $BRANCH https://huggingface.co/LautaroOcho/Argentinian-audio-transcriptions .
         mv checkpoints ../
         cd ..
         rm -rf temp_repo
