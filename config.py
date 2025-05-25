@@ -9,12 +9,11 @@ frame_step = int((7.25/1000) * sr)     # 7.25 ms per sample
 fft_length = int((1/57.4) * sr)        # 57.4 Hz per bin
 mfcc=False
 stft=True
-max_time_len = 1 + (12*sr-frame_length)//frame_step # n_seconds_audio = 12,
-                                            # every file has at most 12 seconds
+max_time_len = int(1 + (8.7*sr-frame_length)//frame_step) # n_seconds_audio = 8.7
 spectrogram_path = './spectrogram/'
 
 ######## Transcription ########
-max_target_len = 140
+max_target_len = 110
 
 ######## Data augmentation times applied #######
 times_augmentations = 1
@@ -49,18 +48,14 @@ characters = [x for x in "abcdefghijklmnopqrstuvwxyz?! ¿áéíúóñ¡"]
 
 ######## Model ####### 
 run_id = None
-default_initial_epoch = 0 # loads weights from checkpoints/epoch_{initial_epoch}.h5 
+default_initial_epoch = 0 # loads weights from checkpoints/ckpt-{initial_epoch}.data-00000-of-00001
                            # when initial_epoch > 0
-batch_size = 32
-num_hid=150
+batch_size = 16
+num_hid=200
 num_head=2
 num_feed_forward=300
 num_layers_enc=6
-num_layers_dec=4
-default_learning_rate=3e-3
-
-######## Demo ####### 
-# If using WSL2 on Windows it is better to have the kenlm folder on linux,
-# not on windows
-rescoring_path = "~/arg_audio_transcriptions/rescoring"
-rescoring_demo = False
+num_layers_dec=2
+default_learning_rate=0.0009773430262285175
+dropout_rate=0.3
+l2_reg = 6e-4

@@ -5,9 +5,9 @@ import numpy as np
 from jiwer import wer, cer
 import re
 from model import build_model
-from config import (characters, batch_size, max_target_len,
-                    num_hid, num_head, num_feed_forward,
-                    num_layers_enc, num_layers_dec, default_learning_rate)
+from config import (characters, batch_size, max_target_len, fft_length,
+                    max_time_len, num_hid, num_head, num_feed_forward,
+                    num_layers_enc, num_layers_dec, default_learning_rate, dropout_rate)
 import keras
 
 # Mapping characters to integers
@@ -20,13 +20,15 @@ num_to_char = keras.layers.StringLookup(
             mask_token="",
             oov_token="-", invert=True)
 
+vocab_size = char_to_num.vocabulary_size()
+
 # A utility function to decode the output of the network
-def decode_batch_predictions(results, greedy=True, beam_width=100, top_paths=1):
+def decode_batch_predictions(results, target_end_token_idx=3):
     # Iterate over the results and get back the text
     output_text = []
     for result in results:
         # Stop where the ">" representation char is found
-        end_token_idx = tf.where(result == 3)
+        end_token_idx = tf.where(result == target_end_token_idx)
         if tf.size(end_token_idx).numpy() > 0:
             first_index = end_token_idx[0][0]
             result = result[:first_index]
@@ -42,7 +44,14 @@ def load_model():
         num_layers_enc=num_layers_enc,
         num_layers_dec=num_layers_dec,
         num_classes=vocab_size,
-        learning_rate=default_learning_rate)
+        learning_rate=default_learning_rate,
+        dropout_rate=dropout_rate)
+
+    # It builds the model, necessary to then restore weights
+    dummy_source = np.random.rand(batch_size, max_time_len, fft_length//2 + 1)
+    dummy_target = np.random.randint(0, model.num_classes, size=(batch_size, max_target_len))
+
+    model([dummy_source, dummy_target])
 
     # Load the weights from the last checkpoint
     checkpoint_dir = 'checkpoints'
@@ -58,9 +67,9 @@ def load_model():
 
 if __name__ == '__main__':
     from preprocessing import *
-    batch_size= 10
+    batch_size= 32
     train_dataset, validation_dataset = train_and_val_slice(df_train, df_val,
-                                                        batch_size=batch_size)
+                                                       batch_size=batch_size)
     # Get the model
     model = load_model()
 
@@ -69,8 +78,8 @@ if __name__ == '__main__':
     targets = []
     for batch in validation_dataset:
         X, y = batch
-        batch_predictions = model.predict(X, target_start_token_idx=2)[:, 1:]
-        batch_predictions = decode_batch_predictions(batch_predictions)
+        batch_predictions = model.predict(X, target_start_token_idx=2, target_end_token_idx=3)[:, 1:]
+        batch_predictions = decode_batch_predictions(batch_predictions, target_end_token_idx=3)
         predictions.extend(batch_predictions)
         batch_y = decode_batch_predictions(y[:, 1:])
         targets.extend(batch_y)
