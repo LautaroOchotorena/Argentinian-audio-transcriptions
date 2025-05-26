@@ -46,8 +46,8 @@ noise_level_upper_bound = 0.03
 characters = [x for x in "abcdefghijklmnopqrstuvwxyz?! ¿áéíúóñ¡"]
 
 ######## Model ####### 
-run_id = '1048cce1ffbf4e1c8d58d380eb90f485'
-default_initial_epoch = 18 # loads weights from checkpoints/epoch_{initial_epoch}.h5 
+run_id = None
+default_initial_epoch = 0 # loads weights from checkpoints/epoch_{initial_epoch}.h5 
                            # when initial_epoch > 0
 batch_size = 7
 rnn_layers=5
@@ -55,8 +55,8 @@ default_learning_rate=0.000196
 dropout = 0.5
 rnn_units=448
 
-######## Demo ####### 
+######## Rescoring ####### 
 # If using WSL2 on Windows it is better to have the kenlm folder on linux,
 # not on windows
-rescoring_path = "~/arg_audio_transcriptions/rescoring"
-rescoring_demo = False
+rescoring_path = "~/arg_audio_transcriptions/rescoring/kenlm"
+rescoring = False
