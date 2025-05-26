@@ -50,10 +50,10 @@ def test_inference_with_example():
         example = df.sample(n=20)
 
         # Download the examples and store them in the spectrogram folder
-        for archivo in example['audio_path']:
+        for file in example['audio_path']:
             local_path = hf_hub_download(
                 repo_id="LautaroOcho/Argentinian-audio-transcriptions",
-                filename= 'spectrogram/' + archivo + '.npy',
+                filename= 'spectrogram/' + file + '.npy',
                 repo_type="dataset"
             )
 
