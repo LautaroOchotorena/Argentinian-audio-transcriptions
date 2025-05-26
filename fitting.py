@@ -150,19 +150,20 @@ class MetricsPlotCallback(keras.callbacks.Callback):
         val_loss = self.client.get_metric_history(self.run_id, "val_loss")
         wer = self.client.get_metric_history(self.run_id, "wer_score")
         val_wer = self.client.get_metric_history(self.run_id, "val_wer_score")
+        cer = self.client.get_metric_history(self.run_id, "cer_score")
+        val_cer = self.client.get_metric_history(self.run_id, "val_cer_score")
 
-        loss_vals = [m.value for m in sorted(loss, key=lambda x: x.step)]
-        val_loss_vals = [m.value for m in sorted(val_loss, key=lambda x: x.step)]
-        wer_vals = [m.value for m in sorted(wer, key=lambda x: x.step)]
-        val_wer_vals = [m.value for m in sorted(val_wer, key=lambda x: x.step)]
+        loss_vals = [(m.step, m.value) for m in sorted(loss, key=lambda x: x.step)]
+        val_loss_vals = [(m.step, m.value) for m in sorted(val_loss, key=lambda x: x.step)]
+        wer_vals = [(m.step, m.value) for m in sorted(wer, key=lambda x: x.step)]
+        val_wer_vals = [(m.step, m.value) for m in sorted(val_wer, key=lambda x: x.step)]
+        cer_vals = [(m.step, m.value) for m in sorted(cer, key=lambda x: x.step)]
+        val_cer_vals = [(m.step, m.value) for m in sorted(val_cer, key=lambda x: x.step)]
 
         # === Loss plot ===
         fig, ax = plt.subplots(figsize=(8, 5))
-        plt.figure(figsize=(8, 5))
-        ax.plot(range(1, len(loss_vals) + 1), loss_vals,
-                 label="loss", color="blue")
-        ax.plot(range(1, len(val_loss_vals) + 1), val_loss_vals,
-                 label="val_loss", color="orange")
+        ax.plot(*zip(*loss_vals), label="loss", color="blue")
+        ax.plot(*zip(*val_loss_vals), label="val_loss", color="orange")
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         ax.set_title("Loss vs Val_Loss")
         ax.set_xlabel("Epoch")
@@ -175,9 +176,9 @@ class MetricsPlotCallback(keras.callbacks.Callback):
 
         # === WER plot ===
         fig, ax = plt.subplots(figsize=(8, 5))
-        ax.plot(range(1, len(wer_vals) + 1), wer_vals, label="wer", color="green")
-        ax.plot(range(1, len(val_wer_vals) + 1), val_wer_vals, label="val_wer", color="red")
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # Fuerza ticks enteros
+        ax.plot(*zip(*wer_vals), label="wer", color="blue")
+        ax.plot(*zip(*val_wer_vals), label="val_wer", color="orange")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # Integer ticks
         ax.set_title("WER vs Val_WER")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Word Error Rate")
@@ -185,6 +186,20 @@ class MetricsPlotCallback(keras.callbacks.Callback):
         ax.grid(True)
         fig.tight_layout()
         fig.savefig(os.path.join(self.save_dir, f"wer_plot.png"))
+        plt.close(fig)
+
+        # === CER plot ===
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.plot(*zip(*cer_vals), label="cer", color="blue")
+        ax.plot(*zip(*val_cer_vals), label="val_cer", color="orange")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))   # Integer ticks
+        ax.set_title("CER vs Val_CER")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Character Error Rate")
+        ax.legend()
+        ax.grid(True)
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.save_dir, f"cer_plot.png"))
         plt.close(fig)
 
 checkpoint = tf.train.Checkpoint(model=model, optimizer=model.optimizer)
@@ -207,9 +222,9 @@ class save_weights_and_optimizer_state(tf.keras.callbacks.Callback):
 checkpoint_dir = 'checkpoints'
 # If a intial_epoch was passed then it restores the weights
 # and the optimizer state from that epoch
-if initial_epoch > 0 and run_id:
+if initial_epoch > 0:
     checkpoint.restore(checkpoint_dir + f'/ckpt-{initial_epoch}')
-    print(f"Checkpoint cargado")
+    print(f"Checkpoint loaded")
 
 class MLFlowEarlyStopping_and_reduce_lr(EarlyStopping):
     def __init__(self, run_id=None, monitor='val_loss',
