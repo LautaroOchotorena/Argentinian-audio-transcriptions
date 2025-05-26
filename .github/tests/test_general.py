@@ -10,10 +10,14 @@ import sys
 # Add a directoy to acces other files
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(parent_dir)
-from config import (fft_length, rnn_units, rnn_layers, default_learning_rate)
 from preprocessing import *
 from inference import decode_batch_predictions, load_model
 from extract_spectrogram import extract_spectrogram
+from dotenv import load_dotenv
+
+# Load the hf token
+load_dotenv() 
+token = os.getenv("HF_TOKEN")
 
 # Load the model
 model = load_model()
