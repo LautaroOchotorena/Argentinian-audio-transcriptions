@@ -2,7 +2,7 @@ import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 import numpy as np
-from jiwer import wer
+from jiwer import wer, cer
 import re
 from model import build_model
 from config import (characters, rnn_units, rnn_layers, batch_size,
@@ -83,8 +83,10 @@ if __name__ == '__main__':
             label = tf.strings.reduce_join(num_to_char(label)).numpy().decode("utf-8")
             targets.append(label)
     wer_score = wer(targets, predictions)
+    cer_score = cer(targets, predictions)
     print("-" * 100)
     print(f"Word Error Rate: {wer_score:.4f}")
+    print(f"Character Error Rate: {cer_score:.4f}")
     print("-" * 100)
     for i in np.random.randint(0, len(predictions), 5):
         print(f"Target    : {targets[i]}")
