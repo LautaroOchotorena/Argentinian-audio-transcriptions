@@ -17,7 +17,7 @@ app = Flask(__name__)
 model = load_model()
 
 # Rescoring
-if rescoring_demo:
+if rescoring:
     # Files needed to use the rescoring
     kenlm_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'rescoring', 'kenlm'))
     sys.path.append(kenlm_dir)
@@ -106,7 +106,7 @@ def transcribe():
         batch_prediction = model.predict(spectrogram, verbose=0)
         transcriptions = decode_batch_predictions(batch_prediction, greedy=greedy, beam_width=beam_width, top_paths=top_paths)[0]
         
-        if rescoring_demo:
+        if rescoring:
             scores = []
             for transcription in transcriptions:
                 score = ken_model.get_perplexity(transcription)
