@@ -50,7 +50,7 @@ characters = [x for x in "abcdefghijklmnopqrstuvwxyz?! ¿áéíúóñ¡"]
 run_id = None
 default_initial_epoch = 0 # loads weights from checkpoints/ckpt-{initial_epoch}.data-00000-of-00001
                            # when initial_epoch > 0
-batch_size = 16
+batch_size = 32
 num_hid=200
 num_head=2
 num_feed_forward=300
