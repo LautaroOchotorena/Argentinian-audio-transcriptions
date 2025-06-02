@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - transformer
 
 jobs:
   deploy:
