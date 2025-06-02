@@ -65,7 +65,7 @@ def upload_files(repo_id, list, branch):
 
 print('Hugging Face Space demo:')
 
-space_demo_list = ["checkpoints", "demo", "Dockerfile",
+space_demo_list = ["demo", "Dockerfile",
               "config.py", "extract_spectrogram.py",
               "inference.py", "model.py", "requirements.txt"]
 
@@ -77,7 +77,7 @@ print('Hugging Face Space updated')
 
 print('\nHugging Face Space app:')
 
-space_app_list = ["data/df.csv", "checkpoints", "app.py",
+space_app_list = ["data/df.csv", "app.py",
               "config.py", "inference.py", "model.py", "requirements.txt"]
 
 upload_files(repo_id = "spaces/LautaroOcho/Argentinian-audio-transcriptions-app",
@@ -88,6 +88,24 @@ print('Hugging Face Space updated')
 
 if __name__ == '__main__':
     from huggingface_hub import HfApi
+
+    print('\nHugging Face Space demo:')
+
+    checkpoints = ["checkpoints"]
+
+    upload_files(repo_id = "spaces/LautaroOcho/Argentinian-audio-transcriptions-demo",
+                list = checkpoints,
+                branch = 'transformer')
+
+    print('Hugging Face Space checkpoint updated')
+
+    print('\nHugging Face Space app:')
+
+    upload_files(repo_id = "spaces/LautaroOcho/Argentinian-audio-transcriptions-app",
+                list = checkpoints,
+                branch = 'transformer')
+
+    print('Hugging Face Space checkpoint updated')
 
     # Hugging Face Model
     print('\nHugging Face Model:')
